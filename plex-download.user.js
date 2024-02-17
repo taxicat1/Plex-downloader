@@ -27,7 +27,7 @@
 	const domElementText   = "Download";
 	
 	
-	// Server idenfitiers and their respective data loaded over API request
+	// Server identifiers and their respective data loaded over API request
 	const serverData = {
 		servers : {
 			// Example data
@@ -40,7 +40,7 @@
 			*/
 		},
 		
-		// Promise for loading server data, ensure it is loaded before we try to pull data
+		// Promise for loading server data, ensure it is loaded before we try to pull media data
 		promise : null,
 		loaded  : false,
 	};
@@ -89,7 +89,7 @@
 	}
 	
 	
-	// Load server information for this user account from plex.tv api
+	// Load server information for this user account from plex.tv API
 	async function loadServerData() {
 		// Ensure access token
 		if (!localStorage.hasOwnProperty("myPlexAccessToken")) {
@@ -311,7 +311,8 @@
 	function downloadMedia(clientId, metadataId) {
 		
 		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("key")) {
-			downloadUri(makeDownloadUri(clientId, metadataId));
+			const uri = makeDownloadUri(clientId, metadataId);
+			downloadUri(uri);
 		}
 		
 		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("children")) {
@@ -325,10 +326,11 @@
 	
 	// Create and add the new DOM elements, return an object with references to them
 	function modifyDom(injectionPoint) {
-		// Steal CSS from the injection point element by copying its class name
+		// Clone the tag of the injection point element
 		const downloadButton = document.createElement(injectionPoint.tagName);
 		downloadButton.id = domPrefix + "DownloadButton";
 		downloadButton.textContent = domElementText;
+		// Steal CSS from the injection point element by copying its class name
 		downloadButton.className = domPrefix + "element" + " " + injectionPoint.className;
 		downloadButton.style = domElementStyle;
 		
@@ -380,15 +382,17 @@
 	
 	// Check to see if we need to modify the DOM, do so if yes
 	async function checkStateAndRun() {
-		// We detect the prescence of the injection point and absence of our injected button after each page mutation
+		// Make sure we're even on the right URL first
+		const urlIds = parseUrl();
+		if (!urlIds) return;
+		
+		// Detect the prescence of the injection point and absence of our injected button
 		if (document.getElementById(domPrefix + "DownloadButton")) return;
 		
 		const injectionPoint = document.querySelector(injectionElement);  
 		if (!injectionPoint) return;
 		
-		const urlIds = parseUrl();
-		if (!urlIds) return;
-		
+		// Inject new button and await the data to add functionality
 		const domElement = modifyDom(injectionPoint);
 		try {
 			await domCallback(domElement, urlIds.clientId, urlIds.metadataId);
