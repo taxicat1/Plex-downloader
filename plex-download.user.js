@@ -65,6 +65,18 @@
 	}
 	
 	
+	const mo = new MutationObserver(checkStateAndRun); // checkStateAndRun hoisted from below
+	
+	function observeDom() {
+		mo.disconnect(); // Avoid ever double triggering
+		mo.observe(document.body, { childList : true, subtree : true });
+	}
+	
+	function stopObservingDom() {
+		mo.disconnect();
+	}
+	
+	
 	// Should not be visible in normal operation
 	function errorHandle(msg) {
 		console.log(logPrefix + " " + msg.toString());
@@ -227,10 +239,9 @@
 	
 	
 	// Parse current URL to get clientId and metadataId, or `false` if unable to match
+	const metadataIdRegex = /key=%2Flibrary%2Fmetadata%2F(\d+)/;
+	const clientIdRegex   = /server\/([a-f0-9]{40})\//;
 	function parseUrl() {
-		const metadataIdRegex = new RegExp("key=%2Flibrary%2Fmetadata%2F(\\d+)");
-		const clientIdRegex   = new RegExp("server\/([a-f0-9]{40})\/");
-		
 		let clientIdMatch = clientIdRegex.exec(location.hash);
 		if (!clientIdMatch || clientIdMatch.length !== 2) return false;
 		
@@ -250,9 +261,21 @@
 	
 	// Start fetching a media item from the URL parameters, storing promise in serverData
 	// Also handles avoiding duplicate API calls for the same media item
-	async function initFetchMediaData() {
+	async function handleHashChange() {
 		let urlIds = parseUrl();
-		if (!urlIds) return;
+		if (!urlIds) {
+			// If not on the right URL to inject new elements, don't bother observing
+			stopObservingDom();
+			return;
+		}
+		
+		// URL matches, observe the DOM for when the injection point loads
+		// Also handle readyState if this is the page we start on
+		if (document.readyState === "loading") {
+			document.addEventListener("DOMContentLoaded", observeDom);
+		} else {
+			observeDom();
+		}
 		
 		// Create media entry early
 		updateServerData({
@@ -382,17 +405,25 @@
 	
 	// Check to see if we need to modify the DOM, do so if yes
 	async function checkStateAndRun() {
-		// Make sure we're even on the right URL first
-		const urlIds = parseUrl();
-		if (!urlIds) return;
-		
-		// Detect the prescence of the injection point and absence of our injected button
-		if (document.getElementById(domPrefix + "DownloadButton")) return;
-		
+		// Detect the presence of the injection point first
 		const injectionPoint = document.querySelector(injectionElement);  
 		if (!injectionPoint) return;
 		
+		// Should be on the right URL if we're observing the DOM and the injection point is found
+		const urlIds = parseUrl();
+		if (!urlIds) {
+			stopObservingDom();
+			return;
+		}
+		
+		// Make sure we don't ever double trigger for any reason
+		if (document.getElementById(domPrefix + "DownloadButton")) {
+			stopObservingDom();
+			return;
+		}
+		
 		// Inject new button and await the data to add functionality
+		stopObservingDom();
 		const domElement = modifyDom(injectionPoint);
 		try {
 			await domCallback(domElement, urlIds.clientId, urlIds.metadataId);
@@ -406,23 +437,9 @@
 		// Begin loading server data immediately
 		serverData.promise = loadServerData();
 		
-		// Try to eager load media info
-		initFetchMediaData();
-		window.addEventListener("hashchange", initFetchMediaData);
-		
-		// Use a mutation observer to detect pages loading in
-		const mo = new MutationObserver(checkStateAndRun);
-		function observeDom() {
-			mo.observe(document.documentElement, { childList : true, subtree : true });
-		}
-		
-		if (document.readyState === "loading") {
-			document.addEventListener("DOMContentLoaded", observeDom);
-		} else {
-			observeDom();
-		}
-		
-		
+		// Try to start immediately
+		handleHashChange();
+		window.addEventListener("hashchange", handleHashChange);
 	})();
 	
 })();
