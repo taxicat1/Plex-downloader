@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.3
+// @version      1.3.1
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/*
@@ -408,7 +408,17 @@
 		
 		// Use a mutation observer to detect pages loading in
 		const mo = new MutationObserver(checkStateAndRun);
-		mo.observe(document.documentElement, { childList: true, subtree: true });
+		function observeDom() {
+			mo.observe(document.documentElement, { childList : true, subtree : true });
+		}
+		
+		if (document.readyState === "loading") {
+			document.addEventListener("DOMContentLoaded", observeDom);
+		} else {
+			observeDom();
+		}
+		
+		
 	})();
 	
 })();
