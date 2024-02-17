@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.3.1
+// @version      1.3.2
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/*
@@ -409,21 +409,17 @@
 		const injectionPoint = document.querySelector(injectionElement);  
 		if (!injectionPoint) return;
 		
+		// We can always stop observing when we have found the injection point
+		stopObservingDom();
+		
 		// Should be on the right URL if we're observing the DOM and the injection point is found
 		const urlIds = parseUrl();
-		if (!urlIds) {
-			stopObservingDom();
-			return;
-		}
+		if (!urlIds) return;
 		
 		// Make sure we don't ever double trigger for any reason
-		if (document.getElementById(domPrefix + "DownloadButton")) {
-			stopObservingDom();
-			return;
-		}
+		if (document.getElementById(domPrefix + "DownloadButton")) return;
 		
 		// Inject new button and await the data to add functionality
-		stopObservingDom();
 		const domElement = modifyDom(injectionPoint);
 		try {
 			await domCallback(domElement, urlIds.clientId, urlIds.metadataId);
