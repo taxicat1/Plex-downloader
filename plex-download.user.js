@@ -105,11 +105,11 @@
 	async function loadServerData() {
 		// Ensure access token
 		if (!localStorage.hasOwnProperty("myPlexAccessToken")) {
-			errorHandle("Cannot find a valid access token (localStorage Plex token missing).");
+			errorHandle(`Cannot find a valid access token (localStorage Plex token missing).`);
 			return;
 		}
 		
-		const apiResourceUrl = `https://plex.tv/api/resources?includeHttps=1&X-Plex-Token=${localStorage["myPlexAccessToken"]}`;
+		const apiResourceUrl = `https://plex.tv/api/resources?includeHttps=1&includeRelay=1&X-Plex-Token=${localStorage["myPlexAccessToken"]}`;
 		const resourceXml = await fetchXml(apiResourceUrl);
 		
 		const serverInfoXPath  = "//Device[@provides='server']";
@@ -121,14 +121,14 @@
 			const clientId    = server.getAttribute("clientIdentifier");
 			const accessToken = server.getAttribute("accessToken");
 			if (!clientId || !accessToken) {
-				errorHandle("Cannot find valid server information (missing ID or token in API response).");
+				errorHandle(`Cannot find valid server information (missing ID or token in API response).`);
 				continue;
 			}
 			
-			const connectionXPath  = "//Connection[@local='0']";
+			const connectionXPath = "//Connection[@local='0']";
 			const conn = resourceXml.evaluate(connectionXPath, server, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 			if (!conn.singleNodeValue || !conn.singleNodeValue.getAttribute("uri")) {
-				errorHandle("Cannot find valid server information (no connection data for server " + clientId + ").");
+				errorHandle(`Cannot find valid server information (no connection data for server ${clientId}).`);
 				continue;
 			}
 			
@@ -140,6 +140,23 @@
 						baseUri     : baseUri,
 						accessToken : accessToken,
 						mediaData   : {},
+					}
+				}
+			});
+			
+			
+			const relayXPath = "//Connection[@relay='1']";
+			const relay = resourceXml.evaluate(relayXPath, server, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+			if (!relay.singleNodeValue || !relay.singleNodeValue.getAttribute("uri")) {
+				// Can ignore an error here as this is only a fallback option
+				continue;
+			}
+			
+			const fallbackUri = relay.singleNodeValue.getAttribute("uri");
+			updateServerData({
+				servers : {
+					[clientId] : {
+						fallbackUri : fallbackUri,
 					}
 				}
 			});
@@ -182,12 +199,28 @@
 		await ensureServerData();
 		
 		// Get access token and base URI for this server
-		const baseUri     = serverData.servers[clientId].baseUri;
+		let   baseUri     = serverData.servers[clientId].baseUri;
 		const accessToken = serverData.servers[clientId].accessToken;
 		
 		// Request library data from this server using metadata ID
-		const libraryUrl = `${baseUri}/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`;
-		const libraryJSON = await fetchJSON(libraryUrl);
+		let libraryJSON;
+		try {
+			const libraryUrl = `${baseUri}/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`;
+			libraryJSON = await fetchJSON(libraryUrl);
+		} catch {
+			// Initial request failed, but we can try again if there is a fallback to use
+			if (serverData.servers[clientId].fallbackUri) {
+				serverData.servers[clientId].baseUri = serverData.servers[clientId].fallbackUri;
+				serverData.servers[clientId].fallbackUri = false;
+				baseUri = serverData.servers[clientId].baseUri;
+				
+				const libraryUrl = `${baseUri}/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`;
+				libraryJSON = await fetchJSON(libraryUrl);
+			} else {
+				errorHandle(`Could not establish connection to server at ${baseUri}`);
+				return;
+			}
+		}
 		
 		// Determine if this is media or just a parent to media
 		let leafCount = false;
@@ -371,7 +404,7 @@
 				break;
 			
 			default:
-				errorHandle("Invalid injection position: " + injectPosition);
+				errorHandle(`Invalid injection position: ${injectPosition}`);
 				break;
 		}
 		
@@ -387,7 +420,7 @@
 		// Make sure we have media data for this item
 		await serverData.servers[clientId].mediaData[metadataId].promise;
 		if (!serverData.servers[clientId].mediaData[metadataId].loaded) {
-			errorHandle("Could not load data for metadataId " + metadataId);
+			errorHandle(`Could not load data for metadataId ${metadataId}`);
 			return;
 		}
 		
@@ -424,7 +457,7 @@
 		try {
 			await domCallback(domElement, urlIds.clientId, urlIds.metadataId);
 		} catch (e) {
-			errorHandle("Exception: " + e);
+			errorHandle(`Exception: ${e}`);
 		}
 	}
 	
