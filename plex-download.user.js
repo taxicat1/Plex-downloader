@@ -148,7 +148,7 @@
 			const relayXPath = "//Connection[@relay='1']";
 			const relay = resourceXml.evaluate(relayXPath, server, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 			if (!relay.singleNodeValue || !relay.singleNodeValue.getAttribute("uri")) {
-				// Can ignore an error here as this is only a fallback option
+				// Can ignore a possible error here as this is only a fallback option
 				continue;
 			}
 			
@@ -198,75 +198,74 @@
 		// Make sure server data has loaded in
 		await ensureServerData();
 		
-		// Get access token and base URI for this server
-		let   baseUri     = serverData.servers[clientId].baseUri;
-		const accessToken = serverData.servers[clientId].accessToken;
-		
-		// Request library data from this server using metadata ID
-		let libraryJSON;
 		try {
-			const libraryUrl = `${baseUri}/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`;
-			libraryJSON = await fetchJSON(libraryUrl);
-		} catch {
-			// Initial request failed, but we can try again if there is a fallback to use
+			// Get access token and base URI for this server
+			const baseUri     = serverData.servers[clientId].baseUri;
+			const accessToken = serverData.servers[clientId].accessToken;
+			
+			// Request library data from this server using metadata ID
+			const libraryUrl  = `${baseUri}/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`;
+			const libraryJSON = await fetchJSON(libraryUrl);
+			
+			// Determine if this is media or just a parent to media
+			let leafCount = false;
+			if (libraryJSON.MediaContainer.Metadata[0].hasOwnProperty("leafCount")) {
+				leafCount = libraryJSON.MediaContainer.Metadata[0].leafCount;
+			}
+			
+			let childCount = false;
+			if (libraryJSON.MediaContainer.Metadata[0].hasOwnProperty("childCount")) {
+				childCount = libraryJSON.MediaContainer.Metadata[0].childCount;
+			}
+			
+			if (leafCount || childCount) {
+				// This is a group media item (show, season) with children
+				
+				// Get all of its children, either by leaves or children directly
+				// A series only has seasons as children, not the episodes. allLeaves must be used there
+				let childrenUrl;
+				if (childCount && leafCount && (childCount !== leafCount)) {
+					childrenUrl = `${baseUri}/library/metadata/${metadataId}/allLeaves?X-Plex-Token=${accessToken}`;
+				} else {
+					childrenUrl = `${baseUri}/library/metadata/${metadataId}/children?X-Plex-Token=${accessToken}`;
+				}
+				
+				const childrenJSON = await fetchJSON(childrenUrl);
+				const childVideoNodes = childrenJSON.MediaContainer.Metadata;
+				
+				// Iterate over the children of this media item and gather their data
+				serverData.servers[clientId].mediaData[metadataId].children = [];
+				
+				for (let i = 0; i < childVideoNodes.length; i++) {
+					let childMetadataId = childVideoNodes[i].ratingKey;
+					updateServerDataMedia(clientId, childVideoNodes[i]);
+					
+					serverData.servers[clientId].mediaData[metadataId].children.push(childMetadataId);
+					
+					// Copy promise to child
+					serverData.servers[clientId].mediaData[childMetadataId].promise = serverData.servers[clientId].mediaData[metadataId].promise;
+				}
+				
+				// Manually flag parent as loaded
+				serverData.servers[clientId].mediaData[metadataId].loaded = true;
+			} else {
+				// This is a regular media item (episode, movie)
+				const videoNode = libraryJSON.MediaContainer.Metadata[0];
+				updateServerDataMedia(clientId, videoNode);
+			}
+			
+		} catch(e) {
+			// Initial request(s) failed, but we can try again if there is a fallback to use
 			if (serverData.servers[clientId].fallbackUri) {
 				serverData.servers[clientId].baseUri = serverData.servers[clientId].fallbackUri;
 				serverData.servers[clientId].fallbackUri = false;
-				baseUri = serverData.servers[clientId].baseUri;
 				
-				const libraryUrl = `${baseUri}/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`;
-				libraryJSON = await fetchJSON(libraryUrl);
+				// Run again from the top
+				await fetchMediaData(clientId, metadataId);
 			} else {
-				errorHandle(`Could not establish connection to server at ${baseUri}`);
+				errorHandle(`Could not establish connection to server at ${baseUri}: ${e}`);
 				return;
 			}
-		}
-		
-		// Determine if this is media or just a parent to media
-		let leafCount = false;
-		if (libraryJSON.MediaContainer.Metadata[0].hasOwnProperty("leafCount")) {
-			leafCount = libraryJSON.MediaContainer.Metadata[0].leafCount;
-		}
-		
-		let childCount = false;
-		if (libraryJSON.MediaContainer.Metadata[0].hasOwnProperty("childCount")) {
-			childCount = libraryJSON.MediaContainer.Metadata[0].childCount;
-		}
-		
-		if (leafCount || childCount) {
-			// This is a group media item (show, season) with children
-			
-			// Get all of its children, either by leaves or children directly
-			// A series only has seasons as children, not the episodes. allLeaves must be used there
-			let childrenUrl;
-			if (childCount && leafCount && (childCount !== leafCount)) {
-				childrenUrl = `${baseUri}/library/metadata/${metadataId}/allLeaves?X-Plex-Token=${accessToken}`;
-			} else {
-				childrenUrl = `${baseUri}/library/metadata/${metadataId}/children?X-Plex-Token=${accessToken}`;
-			}
-			
-			const childrenJSON = await fetchJSON(childrenUrl);
-			const childVideoNodes = childrenJSON.MediaContainer.Metadata;
-			
-			// Iterate over the children of this media item and gather their data
-			serverData.servers[clientId].mediaData[metadataId].children = [];
-			
-			for (let i = 0; i < childVideoNodes.length; i++) {
-				let childMetadataId = childVideoNodes[i].ratingKey;
-				updateServerDataMedia(clientId, childVideoNodes[i]);
-				
-				serverData.servers[clientId].mediaData[metadataId].children.push(childMetadataId);
-				
-				// Copy promise to child
-				serverData.servers[clientId].mediaData[childMetadataId].promise = serverData.servers[clientId].mediaData[metadataId].promise;
-			}
-			
-			// Manually flag parent as loaded
-			serverData.servers[clientId].mediaData[metadataId].loaded = true;
-		} else {
-			// This is a regular media item (episode, movie)
-			const videoNode = libraryJSON.MediaContainer.Metadata[0];
-			updateServerDataMedia(clientId, videoNode);
 		}
 	}
 	
