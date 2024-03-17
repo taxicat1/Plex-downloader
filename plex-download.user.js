@@ -262,7 +262,7 @@
 				// Run again from the top
 				await loadMediaData(clientId, metadataId);
 			} else {
-				errorHandle(`Could not establish connection to server at ${baseUri}: ${e}`);
+				errorHandle(`Could not establish connection to server at ${serverData.servers[clientId].baseUri}: ${e}`);
 				return;
 			}
 		}
@@ -273,15 +273,15 @@
 	const metadataIdRegex = /^\/library\/metadata\/(\d+)$/;
 	const clientIdRegex   = /^\/server\/([a-f0-9]{40})\/details$/;
 	function parseUrl() {
-		if (!location.hash.startsWith('#!/')) return false;
+		if (!location.hash.startsWith("#!/")) return false;
 		
-		let shebang = location.hash.substr(3)
-		let hashUrl = new URL('https://dummy.plex.tv/' + shebang);
+		let shebang = location.hash.substr(3);
+		let hashUrl = new URL("https://dummy.plex.tv/" + shebang);
 		
 		let clientIdMatch = clientIdRegex.exec(hashUrl.pathname);
 		if (!clientIdMatch || clientIdMatch.length !== 2) return false;
 		
-		let mediaKey = hashUrl.searchParams.get('key');
+		let mediaKey = hashUrl.searchParams.get("key");
 		let metadataIdMatch = metadataIdRegex.exec(mediaKey);
 		if (!metadataIdMatch || metadataIdMatch.length !== 2) return false;
 		
@@ -441,7 +441,7 @@
 			e.stopPropagation();
 			cleanUpOldDownloads();
 			downloadMedia(clientId, metadataId);
-		}
+		};
 		domElement.addEventListener("click", downloadFunction);
 		
 		return true;
