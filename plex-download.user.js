@@ -68,7 +68,6 @@
 	const mo = new MutationObserver(checkStateAndRun); // checkStateAndRun hoisted from below
 	
 	function observeDom() {
-		mo.disconnect(); // Avoid ever double triggering
 		mo.observe(document.body, { childList : true, subtree : true });
 	}
 	
@@ -421,6 +420,9 @@
 		
 		// Make sure server data has loaded in
 		await ensureServerData();
+		if (!serverData.loaded) {
+			return false;
+		}
 		
 		// Make sure we have media data for this item
 		if (!serverData.servers[clientId].mediaData[metadataId].promise) {
