@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.3.4
+// @version      1.3.5
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/*
@@ -83,9 +83,8 @@
 	
 	
 	// Fetch XML and return parsed body
+	const xmlParser = new DOMParser();
 	async function fetchXml(url) {
-		const xmlParser = new DOMParser();
-		
 		const response     = await fetch(url);
 		const responseText = await response.text();
 		const responseXml  = xmlParser.parseFromString(responseText, "text/xml");
@@ -165,7 +164,7 @@
 	}
 	
 	// Keep trying loading server data if it happens to fail
-	async function ensureServerData() {
+	async function serverDataAvailable() {
 		await serverData.promise;
 		
 		if (!serverData.loaded) {
@@ -173,6 +172,8 @@
 			serverData.promise = loadServerData();
 			await serverData.promise;
 		}
+		
+		return serverData.loaded;
 	}
 	
 	
@@ -195,7 +196,10 @@
 	// Pull API response for this media item and handle parents/grandparents
 	async function loadMediaData(clientId, metadataId) {
 		// Make sure server data has loaded in
-		await ensureServerData();
+		if (!(await serverDataAvailable())) {
+			errorHandle(`Server information loading failed, trying again on next trigger.`);
+			return false;
+		}
 		
 		try {
 			// Get access token and base URI for this server
@@ -263,11 +267,23 @@
 				await loadMediaData(clientId, metadataId);
 			} else {
 				errorHandle(`Could not establish connection to server at ${serverData.servers[clientId].baseUri}: ${e}`);
-				return;
+				return false;
 			}
 		}
 	}
 	
+	// Try to ensure media data is loaded for a given item. Returns a bool indicating if the item is available
+	async function mediaDataAvailable(clientId, metadataId) {
+		if (serverData.servers[clientId].mediaData[metadataId].promise) {
+			await serverData.servers[clientId].mediaData[metadataId].promise;
+			
+			if (serverData.servers[clientId].mediaData[metadataId].loaded) {
+				return true;
+			}
+		}
+		
+		return false;
+	}
 	
 	// Parse current URL to get clientId and metadataId, or `false` if unable to match
 	const metadataIdRegex = /^\/library\/metadata\/(\d+)$/;
@@ -275,7 +291,7 @@
 	function parseUrl() {
 		if (!location.hash.startsWith("#!/")) return false;
 		
-		let shebang = location.hash.substr(3);
+		let shebang = location.hash.slice(3);
 		let hashUrl = new URL("https://dummy.plex.tv/" + shebang);
 		
 		let clientIdMatch = clientIdRegex.exec(hashUrl.pathname);
@@ -325,18 +341,10 @@
 			}
 		});
 		
-		if (serverData.servers[urlIds.clientId].mediaData[urlIds.metadataId].promise) {
-			// Avoid double creating requests
-			await serverData.servers[urlIds.clientId].mediaData[urlIds.metadataId].promise;
+		if (!(await mediaDataAvailable(urlIds.clientId, urlIds.metadataId))) {
+			let mediaPromise = loadMediaData(urlIds.clientId, urlIds.metadataId);
+			serverData.servers[urlIds.clientId].mediaData[urlIds.metadataId].promise = mediaPromise;
 		}
-		
-		if (serverData.servers[urlIds.clientId].mediaData[urlIds.metadataId].loaded) {
-			// Media item already loaded
-			return;
-		}
-		
-		let mediaPromise = loadMediaData(urlIds.clientId, urlIds.metadataId);
-		serverData.servers[urlIds.clientId].mediaData[urlIds.metadataId].promise = mediaPromise;
 	}
 	
 	// Initiate a download of a URI using iframes
@@ -417,21 +425,14 @@
 	
 	// Activate DOM element and hook clicking with function. Returns bool indicating success
 	async function domCallback(domElement, clientId, metadataId) {
-		
 		// Make sure server data has loaded in
-		await ensureServerData();
-		if (!serverData.loaded) {
+		if (!(await serverDataAvailable())) {
+			errorHandle(`Server information loading failed, trying again on next trigger.`);
 			return false;
 		}
 		
 		// Make sure we have media data for this item
-		if (!serverData.servers[clientId].mediaData[metadataId].promise) {
-			errorHandle(`No load attempt for metadataId ${metadataId}`);
-			return false;
-		}
-		await serverData.servers[clientId].mediaData[metadataId].promise;
-		
-		if (!serverData.servers[clientId].mediaData[metadataId].loaded) {
+		if (!(await mediaDataAvailable(clientId, metadataId))) {
 			errorHandle(`Could not load data for metadataId ${metadataId}`);
 			return false;
 		}
