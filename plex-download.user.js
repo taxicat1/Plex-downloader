@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.3.3
+// @version      1.3.4
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/*
@@ -194,7 +194,7 @@
 	}
 	
 	// Pull API response for this media item and handle parents/grandparents
-	async function fetchMediaData(clientId, metadataId) {
+	async function loadMediaData(clientId, metadataId) {
 		// Make sure server data has loaded in
 		await ensureServerData();
 		
@@ -261,7 +261,7 @@
 				serverData.servers[clientId].fallbackUri = false;
 				
 				// Run again from the top
-				await fetchMediaData(clientId, metadataId);
+				await loadMediaData(clientId, metadataId);
 			} else {
 				errorHandle(`Could not establish connection to server at ${baseUri}: ${e}`);
 				return;
@@ -271,13 +271,19 @@
 	
 	
 	// Parse current URL to get clientId and metadataId, or `false` if unable to match
-	const metadataIdRegex = /key=%2Flibrary%2Fmetadata%2F(\d+)/;
-	const clientIdRegex   = /server\/([a-f0-9]{40})\//;
+	const metadataIdRegex = /^\/library\/metadata\/(\d+)$/;
+	const clientIdRegex   = /^\/server\/([a-f0-9]{40})\/details$/;
 	function parseUrl() {
-		let clientIdMatch = clientIdRegex.exec(location.hash);
+		if (!location.hash.startsWith('#!/')) return false;
+		
+		let shebang = location.hash.substr(3)
+		let hashUrl = new URL('https://dummy.plex.tv/' + shebang);
+		
+		let clientIdMatch = clientIdRegex.exec(hashUrl.pathname);
 		if (!clientIdMatch || clientIdMatch.length !== 2) return false;
 		
-		let metadataIdMatch = metadataIdRegex.exec(location.hash);
+		let mediaKey = hashUrl.searchParams.get('key');
+		let metadataIdMatch = metadataIdRegex.exec(mediaKey);
 		if (!metadataIdMatch || metadataIdMatch.length !== 2) return false;
 		
 		// Get rid of extra regex matches
@@ -330,7 +336,7 @@
 			return;
 		}
 		
-		let mediaPromise = fetchMediaData(urlIds.clientId, urlIds.metadataId);
+		let mediaPromise = loadMediaData(urlIds.clientId, urlIds.metadataId);
 		serverData.servers[urlIds.clientId].mediaData[urlIds.metadataId].promise = mediaPromise;
 	}
 	
@@ -410,28 +416,33 @@
 		return downloadButton;
 	}
 	
-	// Activate DOM element and hook clicking with function
+	// Activate DOM element and hook clicking with function. Returns bool indicating success
 	async function domCallback(domElement, clientId, metadataId) {
 		
 		// Make sure server data has loaded in
 		await ensureServerData();
 		
 		// Make sure we have media data for this item
+		if (!serverData.servers[clientId].mediaData[metadataId].promise) {
+			errorHandle(`No load attempt for metadataId ${metadataId}`);
+			return false;
+		}
 		await serverData.servers[clientId].mediaData[metadataId].promise;
+		
 		if (!serverData.servers[clientId].mediaData[metadataId].loaded) {
 			errorHandle(`Could not load data for metadataId ${metadataId}`);
-			return;
+			return false;
 		}
 		
+		// Hook function to button if everything works
 		const downloadFunction = function(e) {
 			e.stopPropagation();
 			cleanUpOldDownloads();
 			downloadMedia(clientId, metadataId);
 		}
-		
 		domElement.addEventListener("click", downloadFunction);
-		domElement.disabled = false;
-		domElement.style.opacity = 1;
+		
+		return true;
 	}
 	
 	
@@ -453,10 +464,12 @@
 		
 		// Inject new button and await the data to add functionality
 		const domElement = modifyDom(injectionPoint);
-		try {
-			await domCallback(domElement, urlIds.clientId, urlIds.metadataId);
-		} catch (e) {
-			errorHandle(`Exception: ${e}`);
+		let success = await domCallback(domElement, urlIds.clientId, urlIds.metadataId);
+		if (success) {
+			domElement.disabled = false;
+			domElement.style.opacity = 1;
+		} else {
+			domElement.style.opacity = 0.25;
 		}
 	}
 	
