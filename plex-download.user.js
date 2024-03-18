@@ -291,17 +291,24 @@
 	function parseUrl() {
 		if (!location.hash.startsWith("#!/")) return false;
 		
-		let shebang = location.hash.slice(3);
-		let hashUrl = new URL("https://dummy.plex.tv/" + shebang);
+		// Use a URL object to parse the shebang
+		let shebang = location.hash.slice(2);
+		let hashUrl = new URL("https://dummy.plex.tv" + shebang);
 		
+		// URL.pathname should be something like:
+		//  /server/fd174cfae71eba992435d781704afe857609471b/details 
 		let clientIdMatch = clientIdRegex.exec(hashUrl.pathname);
 		if (!clientIdMatch || clientIdMatch.length !== 2) return false;
 		
+		// URL.searchParams should be something like:
+		//  ?key=%2Flibrary%2Fmetadata%2F25439&context=home%3Ahub.continueWatching~0~0 
+		// of which we only care about ?key=[], which should be something like:
+		//  /library/metadata/25439 
 		let mediaKey = hashUrl.searchParams.get("key");
 		let metadataIdMatch = metadataIdRegex.exec(mediaKey);
 		if (!metadataIdMatch || metadataIdMatch.length !== 2) return false;
 		
-		// Get rid of extra regex matches
+		// Get rid of regex match and retain only capturing group
 		let clientId   = clientIdMatch[1];
 		let metadataId = metadataIdMatch[1];
 		
@@ -318,6 +325,9 @@
 		let urlIds = parseUrl();
 		if (!urlIds) {
 			// If not on the right URL to inject new elements, don't bother observing
+			// Note: this assumes the URL which triggers pulling media data is the same URL which
+			//       is where the new element and functionality is to be injected. This is 
+			//       currently true but may change in future plex desktop app updates.
 			stopObservingDom();
 			return;
 		}
@@ -456,6 +466,9 @@
 		if (!injectionPoint) return;
 		
 		// We can always stop observing when we have found the injection point
+		// Note: This relies on the fact that the page does not mutate without also
+		//       triggering hashchange. This is currently true (most of the time) but
+		//       may change in future plex desktop updates
 		stopObservingDom();
 		
 		// Should be on the right URL if we're observing the DOM and the injection point is found
