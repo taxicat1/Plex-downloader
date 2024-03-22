@@ -2,10 +2,10 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.3.5
+// @version      1.3.6
 // @license      MIT
 // @grant        none
-// @match        https://app.plex.tv/desktop/*
+// @match        https://app.plex.tv/desktop/
 // @run-at       document-start
 // @namespace    https://greasyfork.org/users/1260133
 // ==/UserScript==
@@ -18,7 +18,7 @@
 	"use strict";
 	
 	const logPrefix = "[USERJS Plex Downloader]";
-	const domPrefix = `USERJSINJECTED_${Math.random().toString(36).substr(2)}_`;
+	const domPrefix = `USERJSINJECTED_${Math.random().toString(36).slice(2)}_`;
 	
 	// Settings of what element to clone, where to inject it, and any additional CSS to use
 	const injectionElement = "button[data-testid=preplay-play]"; // Play button
@@ -78,7 +78,7 @@
 	
 	// Should not be visible in normal operation
 	function errorHandle(msg) {
-		console.log(logPrefix + " " + msg.toString());
+		console.log(`${logPrefix} {msg.toString()}`);
 	}
 	
 	
