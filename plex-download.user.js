@@ -275,14 +275,11 @@
 	// Try to ensure media data is loaded for a given item. Returns a bool indicating if the item is available
 	async function mediaDataAvailable(clientId, metadataId) {
 		if (serverData.servers[clientId].mediaData[metadataId].promise) {
-			await serverData.servers[clientId].mediaData[metadataId].promise;
-			
-			if (serverData.servers[clientId].mediaData[metadataId].loaded) {
-				return true;
-			}
+			await  serverData.servers[clientId].mediaData[metadataId].promise;
+			return serverData.servers[clientId].mediaData[metadataId].loaded;
+		} else {
+			return false;
 		}
-		
-		return false;
 	}
 	
 	// Parse current URL to get clientId and metadataId, or `false` if unable to match
