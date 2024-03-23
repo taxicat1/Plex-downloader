@@ -47,19 +47,15 @@
 	
 	// Merge new data object into serverData
 	function updateServerData(newData, serverDataScope) {
-		if (!serverDataScope) {
-			serverDataScope = serverData;
-		}
+		serverDataScope = serverDataScope || serverData;
 		
 		for (let key in newData) {
-			if (!serverDataScope.hasOwnProperty(key)) {
+			if (!serverDataScope.hasOwnProperty(key) || typeof newData[key] !== "object") {
+				// Write directly if key doesn't exist or key contains POD
 				serverDataScope[key] = newData[key];
 			} else {
-				if (typeof newData[key] === "object") {
-					updateServerData(newData[key], serverDataScope[key]);
-				} else {
-					serverDataScope[key] = newData[key];
-				}
+				// Merge objects if needed instead
+				updateServerData(newData[key], serverDataScope[key]);
 			}
 		}
 	}
