@@ -98,12 +98,13 @@
 	// Load server information for this user account from plex.tv API
 	async function loadServerData() {
 		// Ensure access token
-		if (!localStorage.hasOwnProperty("myPlexAccessToken")) {
+		let serverToken = window.localStorage.getItem("myPlexAccessToken");
+		if (serverToken === null) {
 			errorHandle(`Cannot find a valid access token (localStorage Plex token missing).`);
 			return;
 		}
 		
-		const apiResourceUrl = `https://plex.tv/api/resources?includeHttps=1&includeRelay=1&X-Plex-Token=${localStorage["myPlexAccessToken"]}`;
+		const apiResourceUrl = `https://plex.tv/api/resources?includeHttps=1&includeRelay=1&X-Plex-Token=${serverToken}`;
 		const resourceXml = await fetchXml(apiResourceUrl);
 		
 		const serverInfoXPath  = "//Device[@provides='server']";
