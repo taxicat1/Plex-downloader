@@ -105,7 +105,13 @@
 		}
 		
 		const apiResourceUrl = `https://plex.tv/api/resources?includeHttps=1&includeRelay=1&X-Plex-Token=${serverToken}`;
-		const resourceXml = await fetchXml(apiResourceUrl);
+		let resourceXml;
+		try {
+			resourceXml = await fetchXml(apiResourceUrl);
+		} catch(e) {
+			errorHandle(`Cannot load valid server information (resources API call returned error ${e})`);
+			return;
+		}
 		
 		const serverInfoXPath  = "//Device[@provides='server']";
 		const servers = resourceXml.evaluate(serverInfoXPath, resourceXml, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
