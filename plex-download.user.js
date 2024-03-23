@@ -74,7 +74,7 @@
 	
 	// Should not be visible in normal operation
 	function errorHandle(msg) {
-		console.log(`${logPrefix} {msg.toString()}`);
+		console.log(`${logPrefix} ${msg.toString()}`);
 	}
 	
 	
