@@ -201,11 +201,17 @@
 		// Make sure server data has loaded in
 		if (!(await serverDataAvailable())) {
 			errorHandle(`Server information loading failed, trying again on next trigger.`);
-			return false;
+			return;
 		}
 		
 		try {
 			// Get access token and base URI for this server
+			if (!serverData.servers[clientId].hasOwnProperty("baseUri") ||
+			    !serverData.servers[clientId].hasOwnProperty("accessToken")) {
+				errorHandle(`No server information for clientId ${clientId} when trying to load media data`);
+				return;
+			}
+			
 			const baseUri     = serverData.servers[clientId].baseUri;
 			const accessToken = serverData.servers[clientId].accessToken;
 			
@@ -258,6 +264,7 @@
 				// This is a regular media item (episode, movie)
 				const videoNode = libraryJSON.MediaContainer.Metadata[0];
 				updateServerDataMedia(clientId, videoNode);
+				return;
 			}
 			
 		} catch(e) {
@@ -270,7 +277,7 @@
 				await loadMediaData(clientId, metadataId);
 			} else {
 				errorHandle(`Could not establish connection to server at ${serverData.servers[clientId].baseUri}: ${e}`);
-				return false;
+				return;
 			}
 		}
 	}
