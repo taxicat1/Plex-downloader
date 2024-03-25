@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.3.6
+// @version      1.3.7
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -42,7 +42,6 @@
 		
 		// Promise for loading server data, ensure it is loaded before we try to pull media data
 		promise : null,
-		loaded  : false,
 	};
 	
 	// Merge new data object into serverData
@@ -95,13 +94,13 @@
 	}
 	
 	
-	// Load server information for this user account from plex.tv API
+	// Load server information for this user account from plex.tv API. Returns a bool indicating success
 	async function loadServerData() {
 		// Ensure access token
 		let serverToken = window.localStorage.getItem("myPlexAccessToken");
 		if (serverToken === null) {
 			errorHandle(`Cannot find a valid access token (localStorage Plex token missing).`);
-			return;
+			return false;
 		}
 		
 		const apiResourceUrl = `https://plex.tv/api/resources?includeHttps=1&includeRelay=1&X-Plex-Token=${serverToken}`;
@@ -110,7 +109,7 @@
 			resourceXml = await fetchXml(apiResourceUrl);
 		} catch(e) {
 			errorHandle(`Cannot load valid server information (resources API call returned error ${e})`);
-			return;
+			return false;
 		}
 		
 		const serverInfoXPath  = "//Device[@provides='server']";
@@ -163,20 +162,20 @@
 			});
 		}
 		
-		serverData.loaded = true;
+		return true;
 	}
 	
 	// Keep trying loading server data if it happens to fail
 	async function serverDataAvailable() {
-		await serverData.promise;
-		
-		if (!serverData.loaded) {
+		if (!(await serverData.promise)) {
 			// Reload
 			serverData.promise = loadServerData();
-			await serverData.promise;
+			
+			// If this one doesn't work we just fail and try again later
+			return await serverData.promise;
 		}
 		
-		return serverData.loaded;
+		return true;
 	}
 	
 	
@@ -187,8 +186,7 @@
 				[clientId] : {
 					mediaData : {
 						[videoNode.ratingKey] : {
-							key    : videoNode.Media[0].Part[0].key,
-							loaded : true,
+							key : videoNode.Media[0].Part[0].key,
 						}
 					}
 				}
@@ -196,25 +194,25 @@
 		});
 	}
 	
-	// Pull API response for this media item and handle parents/grandparents
+	// Pull API response for this media item and handle parents/grandparents. Returns a bool indicating success
 	async function loadMediaData(clientId, metadataId) {
 		// Make sure server data has loaded in
 		if (!(await serverDataAvailable())) {
 			errorHandle(`Server information loading failed, trying again on next trigger.`);
-			return;
+			return false;
 		}
 		
+		// Get access token and base URI for this server
+		if (!serverData.servers[clientId].hasOwnProperty("baseUri") ||
+			!serverData.servers[clientId].hasOwnProperty("accessToken")) {
+			errorHandle(`No server information for clientId ${clientId} when trying to load media data`);
+			return false;
+		}
+		
+		const baseUri     = serverData.servers[clientId].baseUri;
+		const accessToken = serverData.servers[clientId].accessToken;
+		
 		try {
-			// Get access token and base URI for this server
-			if (!serverData.servers[clientId].hasOwnProperty("baseUri") ||
-			    !serverData.servers[clientId].hasOwnProperty("accessToken")) {
-				errorHandle(`No server information for clientId ${clientId} when trying to load media data`);
-				return;
-			}
-			
-			const baseUri     = serverData.servers[clientId].baseUri;
-			const accessToken = serverData.servers[clientId].accessToken;
-			
 			// Request library data from this server using metadata ID
 			const libraryUrl  = `${baseUri}/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`;
 			const libraryJSON = await fetchJSON(libraryUrl);
@@ -257,16 +255,11 @@
 					// Copy promise to child
 					serverData.servers[clientId].mediaData[childMetadataId].promise = serverData.servers[clientId].mediaData[metadataId].promise;
 				}
-				
-				// Manually flag parent as loaded
-				serverData.servers[clientId].mediaData[metadataId].loaded = true;
 			} else {
 				// This is a regular media item (episode, movie)
 				const videoNode = libraryJSON.MediaContainer.Metadata[0];
 				updateServerDataMedia(clientId, videoNode);
-				return;
 			}
-			
 		} catch(e) {
 			// Initial request(s) failed, but we can try again if there is a fallback to use
 			if (serverData.servers[clientId].fallbackUri) {
@@ -274,19 +267,20 @@
 				serverData.servers[clientId].fallbackUri = false;
 				
 				// Run again from the top
-				await loadMediaData(clientId, metadataId);
+				return await loadMediaData(clientId, metadataId);
 			} else {
 				errorHandle(`Could not establish connection to server at ${serverData.servers[clientId].baseUri}: ${e}`);
-				return;
+				return false;
 			}
 		}
+		
+		return true;
 	}
 	
 	// Try to ensure media data is loaded for a given item. Returns a bool indicating if the item is available
 	async function mediaDataAvailable(clientId, metadataId) {
 		if (serverData.servers[clientId].mediaData[metadataId].promise) {
-			await  serverData.servers[clientId].mediaData[metadataId].promise;
-			return serverData.servers[clientId].mediaData[metadataId].loaded;
+			return await serverData.servers[clientId].mediaData[metadataId].promise;
 		} else {
 			return false;
 		}
