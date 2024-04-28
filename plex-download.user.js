@@ -426,10 +426,10 @@
 					return child;
 				}
 				
-				if (child.childNodes) {
-					let recurse = findTextNode(child);
-					if (recurse) {
-						return recurse;
+				if (child.hasChildNodes()) {
+					let recurseResult = findTextNode(child);
+					if (recurseResult) {
+						return recurseResult;
 					}
 				}
 			}
