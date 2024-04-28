@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.3.8
+// @version      1.4.0
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -419,19 +419,26 @@
 		downloadButton.style = domElementStyle;
 		
 		// Additionally: match the font used by the text content of the injection point
-		// We traverse the node and select the lowest child element containing the (start of the) text
-		let textParentNode = injectionPoint;
-		let childFound;
-		do {
-			childFound = false;
-			for (let child of textParentNode.children) {
-				if (child.textContent && textParentNode.textContent.startsWith(child.textContent)) {
-					textParentNode = child;
-					childFound = true;
-					break;
+		// We traverse the element and select the first text node, then use its parent
+		let textNode = (function findTextNode(parent) {
+			for (let child of parent.childNodes) {
+				if (child.nodeType === HTMLElement.TEXT_NODE) {
+					return child;
+				}
+				
+				if (child.childNodes) {
+					let recurse = findTextNode(child);
+					if (recurse) {
+						return recurse;
+					}
 				}
 			}
-		} while(childFound);
+			
+			return false;
+		})(injectionPoint);
+		
+		// If no text node was found as a child of the injection point, fall back to the injection point itself
+		let textParentNode = textNode ? textNode.parentNode : injectionPoint;
 		
 		// Get computed font and apply it
 		downloadButton.style.font = getComputedStyle(textParentNode).getPropertyValue("font");
