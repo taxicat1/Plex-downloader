@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.3.7
+// @version      1.3.8
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -23,7 +23,7 @@
 	// Settings of what element to clone, where to inject it, and any additional CSS to use
 	const injectionElement = "button[data-testid=preplay-play]"; // Play button
 	const injectPosition   = "after";
-	const domElementStyle  = "font-weight: bold;";
+	const domElementStyle  = "";
 	const domElementText   = "Download";
 	
 	
@@ -282,6 +282,8 @@
 		if (serverData.servers[clientId].mediaData[metadataId].promise) {
 			return await serverData.servers[clientId].mediaData[metadataId].promise;
 		} else {
+			// Note we don't create a request here as this method is used 
+			// in handleHashChange to detect if we need to create a new request
 			return false;
 		}
 	}
@@ -407,11 +409,32 @@
 	function modifyDom(injectionPoint) {
 		// Clone the tag of the injection point element
 		const downloadButton = document.createElement(injectionPoint.tagName);
-		downloadButton.id = domPrefix + "DownloadButton";
+		downloadButton.id = `${domPrefix}DownloadButton`;
 		downloadButton.textContent = domElementText;
+		
 		// Steal CSS from the injection point element by copying its class name
-		downloadButton.className = domPrefix + "element" + " " + injectionPoint.className;
+		downloadButton.className = `${domPrefix}element ${injectionPoint.className}`;
+		
+		// Apply custom CSS first
 		downloadButton.style = domElementStyle;
+		
+		// Additionally: match the font used by the text content of the injection point
+		// We traverse the node and select the lowest child element containing the (start of the) text
+		let textParentNode = injectionPoint;
+		let childFound;
+		do {
+			childFound = false;
+			for (let child of textParentNode.children) {
+				if (child.textContent && textParentNode.textContent.startsWith(child.textContent)) {
+					textParentNode = child;
+					childFound = true;
+					break;
+				}
+			}
+		} while(childFound);
+		
+		// Get computed font and apply it
+		downloadButton.style.font = getComputedStyle(textParentNode).getPropertyValue("font");
 		
 		// Starts disabled
 		downloadButton.style.opacity = 0.5;
