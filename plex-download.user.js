@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.4.1
+// @version      1.4.2
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -243,11 +243,16 @@
 	
 	// Allow Tab/Enter/Space to correctly interact with the modal
 	modal.captureKeyPress = function(e) {
-		switch (e.keyCode) {
-			case 9: // Tab
+		// No keypresses are allowed to interact with any lower event listeners
+		e.stopPropagation();
+		
+		switch (e.key) {
+			case "Tab":
+				// Move focus into the modal if it somehow isn't already
 				if (!modal.container.contains(document.activeElement)) {
 					modal.tabKey[0].focus();
 					e.preventDefault();
+					break;
 				}
 				
 				// Clamp tabbing to the next element to the selectable elements within the modal
@@ -264,17 +269,15 @@
 					}
 				}
 				
-				e.stopPropagation();
 				break;
 			
-			case 27: // Esc
+			case "Escape":
 				modal.close();
-				e.stopPropagation();
 				break;
 			
-			case 13: // Enter
+			case "Enter":
+				// The enter key interacting with checkboxes can be unreliable
 				e.preventDefault();
-				e.stopPropagation();
 				if (modal.container.contains(document.activeElement)) {
 					document.activeElement.click();
 				}
@@ -353,7 +356,7 @@
 	// Called by the injected DOM element to populate the modal
 	modal.populate = function(clientId, metadataId) {
 		while (modal.itemContainer.hasChildNodes()) {
-			modal.itemContainer.removeChild(modal.itemContainer.firstChild);
+			modal.itemContainer.firstChild.remove();
 		}
 		
 		for (let childId of serverData.servers[clientId].mediaData[metadataId].children) {
@@ -372,7 +375,7 @@
 			modal.itemContainer.appendChild(item);
 		}
 		
-		if (serverData.servers[clientId].mediaData[metadataId].displayName) {
+		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("displayName")) {
 			modal.title.textContent = serverData.servers[clientId].mediaData[metadataId].displayName;
 		} else {
 			modal.title.textContent = "Download";
@@ -913,8 +916,10 @@
 		};
 		domElement.addEventListener("click", downloadFunction);
 		
-		if (serverData.servers[clientId].mediaData[metadataId].filesize) {
-			domElement.setAttribute("title", makeFilesize(serverData.servers[clientId].mediaData[metadataId].filesize));
+		// Add the filesize on hover, if available
+		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("filesize")) {
+			let filesize = makeFilesize(serverData.servers[clientId].mediaData[metadataId].filesize);
+			domElement.setAttribute("title", filesize);
 		}
 		
 		return true;
