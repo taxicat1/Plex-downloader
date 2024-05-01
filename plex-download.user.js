@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.4.2
+// @version      1.4.3
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -24,7 +24,7 @@
 	const injectionElement    = "button[data-testid=preplay-play]"; // Play button
 	const injectPosition      = "after";
 	const domElementStyle     = "";
-	const domElementInnerHTML = "<svg xmlns='http://www.w3.org/2000/svg' style='height: 1.5rem;width: 1.5rem;margin: 0 4px 0 0;'><g><path d='M3,12.3v7a2,2,0,0,0,2,2H19a2,2,0,0,0,2-2v-7' fill='none' stroke='#000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'></path><g><polyline data-name='Right' fill='none' id='Right-2' points='7.9 12.3 12 16.3 16.1 12.3' stroke='#000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'></polyline><line fill='none' stroke='#000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' x1='12' x2='12' y1='2.7' y2='14.2'></line></g></g></svg>Download";
+	const domElementInnerHTML = "<svg xmlns='http://www.w3.org/2000/svg' style='height: 1.5rem;width: 1.5rem;margin: 0 4px 0 0;'><g><path d='M3,12.3v7a2,2,0,0,0,2,2H19a2,2,0,0,0,2-2v-7' fill='none' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'></path><g><polyline data-name='Right' fill='none' id='Right-2' points='7.9 12.3 12 16.3 16.1 12.3' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'></polyline><line fill='none' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' x1='12' x2='12' y1='2.7' y2='14.2'></line></g></g></svg>Download";
 	
 	
 	
@@ -825,7 +825,7 @@
 	}
 	
 	
-	// Create and add the new DOM elements, return an object with references to them
+	// Create and add the new DOM element, return a reference to it
 	function modifyDom(injectionPoint) {
 		// Clone the tag of the injection point element
 		const downloadButton = document.createElement(injectionPoint.tagName);
@@ -838,7 +838,7 @@
 		// Apply custom CSS first
 		downloadButton.style = domElementStyle;
 		
-		// Additionally: match the font used by the text content of the injection point
+		// Match the font used by the text content of the injection point
 		// We traverse the element and select the first text node, then use its parent
 		let textNode = (function findTextNode(parent) {
 			for (let child of parent.childNodes) {
@@ -861,7 +861,9 @@
 		let textParentNode = textNode ? textNode.parentNode : injectionPoint;
 		
 		// Get computed font and apply it
-		downloadButton.style.font = getComputedStyle(textParentNode).getPropertyValue("font");
+		let textNodeStyle = getComputedStyle(textParentNode);
+		downloadButton.style.font  = textNodeStyle.getPropertyValue("font");
+		downloadButton.style.color = textNodeStyle.getPropertyValue("color");
 		
 		// Starts disabled
 		downloadButton.style.opacity = 0.5;
