@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.4.3
+// @version      1.4.4
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -244,7 +244,7 @@
 	// Allow Tab/Enter/Space to correctly interact with the modal
 	modal.captureKeyPress = function(e) {
 		// No keypresses are allowed to interact with any lower event listeners
-		e.stopPropagation();
+		e.stopImmediatePropagation();
 		
 		switch (e.key) {
 			case "Tab":
@@ -298,7 +298,7 @@
 		
 		document.body.appendChild(modal.container);
 		modal.tabKey[0].focus();
-		window.addEventListener("keydown", modal.captureKeyPress);
+		window.addEventListener("keydown", modal.captureKeyPress, true);
 		
 		// Odd bug: need to delay this or CSS animation won't play
 		setTimeout(function() {
@@ -310,7 +310,7 @@
 	// Close modal
 	modal.close = function() {
 		modal.container.remove();
-		window.removeEventListener("keydown", modal.captureKeyPress);
+		window.removeEventListener("keydown", modal.captureKeyPress, true);
 		
 		modal.popup.style.top     = "-20%";
 		modal.popup.style.opacity = "0";
