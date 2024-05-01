@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.4.5
+// @version      1.4.6
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -275,7 +275,7 @@
 				}
 				
 				// Clamp tabbing to the next element to the selectable elements within the modal
-				// Shift key reverse the direction
+				// Shift key reverses the direction
 				if (e.shiftKey) {
 					if (document.activeElement === modal.firstTab) {
 						e.preventDefault();
@@ -327,6 +327,10 @@
 		
 		document.body.appendChild(modal.container);
 		window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
+		
+		// Push history state so the back button will not navigate away from this page
+		history.pushState({ }, '');
+		
 		modal.lastTab.focus();
 		
 		// CSS animation entrance
@@ -345,6 +349,7 @@
 	modal.overlay.addEventListener("click", modal.close);
 	modal.popup.addEventListener("click", function(e) { e.stopPropagation() });
 	modal.topX.addEventListener("click", modal.close);
+	window.addEventListener("popstate", modal.close);
 	
 	modal.checkAll.addEventListener("change", function() {
 		for (let item of modal.items) {
