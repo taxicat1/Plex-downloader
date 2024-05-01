@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.4.4
+// @version      1.4.5
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -72,6 +72,20 @@
 			color: #eee;
 		}
 		
+		#${domPrefix}modal_container {
+			width: 0;
+			height: 0;
+			display: block;
+			pointer-events: none;
+			transition: opacity 0.2s;
+			opacity: 0;
+		}
+		
+		#${domPrefix}modal_container.${domPrefix}open {
+			pointer-events: auto;
+			opacity: 1;
+		}
+		
 		#${domPrefix}modal_overlay {
 			width: 100%;
 			height: 100%;
@@ -98,9 +112,12 @@
 			text-align: center;
 			box-shadow: 0 0 10px 1px black;
 			position: relative;
-			top: -20%;
-			opacity: 0;
-			transition: top 0.2s, opacity 0.3s ease-out;
+			transition: top 0.2s ease-out;
+			top: -15%;
+		}
+		
+		#${domPrefix}modal_container.${domPrefix}open #${domPrefix}modal_popup {
+			top: -2%;
 		}
 		
 		#${domPrefix}modal_title {
@@ -150,7 +167,7 @@
 			color: #eee;
 			border: 1px solid #5555;
 			font-size: 14pt;
-			transition: opacity 0.1s;
+			transition: opacity 0.15s;
 		}
 		
 		#${domPrefix}modal_downloadbutton:hover:not([disabled]) {
@@ -198,13 +215,13 @@
 		<style>${modal.stylesheet}</style>
 		
 		<${domPrefix}element id="${domPrefix}modal_overlay">
-			<${domPrefix}element id="${domPrefix}modal_popup">
+			<${domPrefix}element id="${domPrefix}modal_popup" role="dialog" aria-modal="true" aria-labelledby="${domPrefix}modal_title">
 				<${domPrefix}element id="${domPrefix}modal_title">Download</${domPrefix}element>
-				<input type="button" id="${domPrefix}modal_topx" value="&#x2715;" />
+				<input type="button" id="${domPrefix}modal_topx" value="&#x2715;" aria-label="close" tabindex="0"/>
 				
 				<${domPrefix}element class="${domPrefix}modal_item">
 					<label for="${domPrefix}modal_checkall" style="font-weight: 600; color: inherit;">
-						<input type="checkbox" id="${domPrefix}modal_checkall" checked="true" />
+						<input type="checkbox" id="${domPrefix}modal_checkall" checked="true" tabindex="0"/>
 						<${domPrefix}element>Select all</${domPrefix}element>
 					</label>
 				</${domPrefix}element>
@@ -219,7 +236,7 @@
 				</${domPrefix}element>
 				
 				<${domPrefix}element>
-					<input type="button" id="${domPrefix}modal_downloadbutton" value="Download" />
+					<input type="button" id="${domPrefix}modal_downloadbutton" value="Download" tabindex="0"/>
 				</${domPrefix}element
 			</${domPrefix}element>
 		</${domPrefix}element>
@@ -239,7 +256,9 @@
 	
 	// Live updating collection of items
 	modal.items  = modal.itemContainer.getElementsByTagName("input");
-	modal.tabKey = modal.container.getElementsByTagName("input");
+	
+	modal.firstTab = modal.topX;
+	modal.lastTab  = modal.downloadButton;
 	
 	// Allow Tab/Enter/Space to correctly interact with the modal
 	modal.captureKeyPress = function(e) {
@@ -250,22 +269,22 @@
 			case "Tab":
 				// Move focus into the modal if it somehow isn't already
 				if (!modal.container.contains(document.activeElement)) {
-					modal.tabKey[0].focus();
 					e.preventDefault();
+					modal.firstTab.focus();
 					break;
 				}
 				
 				// Clamp tabbing to the next element to the selectable elements within the modal
 				// Shift key reverse the direction
 				if (e.shiftKey) {
-					if (document.activeElement === modal.tabKey[0]) {
+					if (document.activeElement === modal.firstTab) {
 						e.preventDefault();
-						modal.tabKey[modal.tabKey.length-1].focus();
+						modal.lastTab.focus();
 					}
 				} else {
-					if (document.activeElement === modal.tabKey[modal.tabKey.length-1]) {
+					if (document.activeElement === modal.lastTab) {
 						e.preventDefault();
-						modal.tabKey[0].focus();
+						modal.firstTab.focus();
 					}
 				}
 				
@@ -285,6 +304,17 @@
 		}
 	}
 	
+	// Modal removes itself from the DOM once its CSS transition is over
+	modal.container.addEventListener("transitionend", function(e) {
+		// Ignore any transitionend events fired by child elements
+		if (e.target !== modal.container) return;
+		
+		// Look to remove the modal from the DOM
+		if (!modal.container.classList.contains(`${domPrefix}open`)) {
+			modal.container.remove();
+		}
+	});
+	
 	// Show the modal on screen
 	modal.open = function() {
 		// Reset all checkboxes
@@ -293,27 +323,22 @@
 		}
 		
 		modal.checkAll.checked = true;
-		
 		modal.checkBoxChange();
 		
 		document.body.appendChild(modal.container);
-		modal.tabKey[0].focus();
-		window.addEventListener("keydown", modal.captureKeyPress, true);
+		window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
+		modal.lastTab.focus();
 		
-		// Odd bug: need to delay this or CSS animation won't play
-		setTimeout(function() {
-			modal.popup.style.top     = "-2%";
-			modal.popup.style.opacity = "1";
-		}, 1);
+		// CSS animation entrance
+		modal.container.classList.add(`${domPrefix}open`);
 	}
 	
 	// Close modal
 	modal.close = function() {
-		modal.container.remove();
-		window.removeEventListener("keydown", modal.captureKeyPress, true);
+		window.removeEventListener("keydown", modal.captureKeyPress, { capturing : true });
 		
-		modal.popup.style.top     = "-20%";
-		modal.popup.style.opacity = "0";
+		// CSS animation exit, triggers the removal from the DOM
+		modal.container.classList.remove(`${domPrefix}open`);
 	}
 	
 	// Hook functionality for modal
@@ -364,7 +389,7 @@
 			item.className = `${domPrefix}modal_item`;
 			item.innerHTML = `
 				<label for="${domPrefix}item_checkbox_${childId}">
-					<input type="checkbox" id="${domPrefix}item_checkbox_${childId}" checked="true" value="${childId}" />
+					<input type="checkbox" id="${domPrefix}item_checkbox_${childId}" checked="true" value="${childId}" tabindex="0"/>
 					<${domPrefix}element>${serverData.servers[clientId].mediaData[childId].displayName}</${domPrefix}element>
 				</label>
 			`;
