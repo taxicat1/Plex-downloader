@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.4.8
+// @version      1.4.9
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -215,7 +215,7 @@
 		<style>${modal.stylesheet}</style>
 		
 		<${domPrefix}element id="${domPrefix}modal_overlay">
-			<${domPrefix}element id="${domPrefix}modal_popup" role="dialog" aria-modal="true" aria-labelledby="${domPrefix}modal_title">
+			<${domPrefix}element id="${domPrefix}modal_popup" role="dialog" aria-modal="true" aria-labelledby="${domPrefix}modal_title" aria-describedby="${domPrefix}modal_downloaddescription">
 				<${domPrefix}element id="${domPrefix}modal_title">Download</${domPrefix}element>
 				<input type="button" id="${domPrefix}modal_topx" value="&#x2715;" aria-label="close" tabindex="0"/>
 				
@@ -232,7 +232,7 @@
 				<${domPrefix}element id="${domPrefix}modal_itemcontainer"></${domPrefix}element>
 				
 				<${domPrefix}element style="display: block; margin: 1em;">
-					Total download size: <${domPrefix}element id="${domPrefix}modal_downloadsize">0B</${domPrefix}element>
+					<${domPrefix}element id="${domPrefix}modal_downloaddescription"></${domPrefix}element>
 				</${domPrefix}element>
 				
 				<${domPrefix}element>
@@ -242,17 +242,20 @@
 		</${domPrefix}element>
 	`;
 	
-	// Must use querySelector here (or use names or tagnames) since subelements don't get getElementById
-	modal.overlay        = modal.container.querySelector(`#${domPrefix}modal_overlay`);
-	modal.popup          = modal.container.querySelector(`#${domPrefix}modal_popup`);
-	modal.title          = modal.container.querySelector(`#${domPrefix}modal_title`);
-	modal.itemContainer  = modal.container.querySelector(`#${domPrefix}modal_itemcontainer`);
-	modal.topX           = modal.container.querySelector(`#${domPrefix}modal_topx`);
-	modal.downloadButton = modal.container.querySelector(`#${domPrefix}modal_downloadbutton`);
-	modal.checkAll       = modal.container.querySelector(`#${domPrefix}modal_checkall`);
-	modal.clientId       = modal.container.querySelector(`#${domPrefix}modal_clientid`);
-	modal.parentId       = modal.container.querySelector(`#${domPrefix}modal_parentid`);
-	modal.downloadSize   = modal.container.querySelector(`#${domPrefix}modal_downloadsize`);
+	// Must use DocumentFragment here to access getElementById
+	modal.documentFragment = document.createDocumentFragment();
+	modal.documentFragment.append(modal.container);
+	
+	modal.overlay             = modal.documentFragment.getElementById(`${domPrefix}modal_overlay`);
+	modal.popup               = modal.documentFragment.getElementById(`${domPrefix}modal_popup`);
+	modal.title               = modal.documentFragment.getElementById(`${domPrefix}modal_title`);
+	modal.itemContainer       = modal.documentFragment.getElementById(`${domPrefix}modal_itemcontainer`);
+	modal.topX                = modal.documentFragment.getElementById(`${domPrefix}modal_topx`);
+	modal.downloadButton      = modal.documentFragment.getElementById(`${domPrefix}modal_downloadbutton`);
+	modal.checkAll            = modal.documentFragment.getElementById(`${domPrefix}modal_checkall`);
+	modal.clientId            = modal.documentFragment.getElementById(`${domPrefix}modal_clientid`);
+	modal.parentId            = modal.documentFragment.getElementById(`${domPrefix}modal_parentid`);
+	modal.downloadDescription = modal.documentFragment.getElementById(`${domPrefix}modal_downloaddescription`);
 	
 	// Live updating collection of items
 	modal.itemCheckboxes  = modal.itemContainer.getElementsByTagName("input");
@@ -316,7 +319,9 @@
 	});
 	
 	// Show the modal on screen
-	modal.open = function() {
+	modal.open = function(clientId, metadataId) {
+		modal.populate(clientId, metadataId);
+		
 		// Reset all checkboxes
 		for (let checkbox of modal.itemCheckboxes) {
 			checkbox.checked = true;
@@ -375,18 +380,29 @@
 	modal.checkBoxChange = function() {
 		// Add up total filesize
 		let totalFilesize = 0;
+		let selectedItems = 0;
 		for (let checkbox of modal.itemCheckboxes) {
 			if (checkbox.checked) {
 				totalFilesize += serverData.servers[modal.clientId.value].mediaData[checkbox.value].filesize;
+				selectedItems++;
 			}
 		}
 		
-		modal.downloadSize.textContent = makeFilesize(totalFilesize);
+		let description = `${selectedItems} item(s) selected. Total size: ${makeFilesize(totalFilesize)}`;
+		modal.downloadDescription.textContent = description;
 		modal.downloadButton.disabled = (totalFilesize === 0); // Can't download nothing
 	}
 	
-	// Called by the injected DOM element to populate the modal
+	// Fill the modal with information for a specific group media item
 	modal.populate = function(clientId, metadataId) {
+		if (
+			modal.clientId.value === clientId &&
+			modal.parentId.value === metadataId
+		) {
+			// Ignore double trigger
+			return;
+		}
+		
 		while (modal.itemContainer.hasChildNodes()) {
 			modal.itemContainer.firstChild.remove();
 		}
@@ -941,10 +957,7 @@
 			
 			// Open modal box for group media items
 			if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("children")) {
-				if (modal.parentId.value !== metadataId) {
-					modal.populate(clientId, metadataId);
-				}
-				modal.open();
+				modal.open(clientId, metadataId);
 			} else {
 				// Download immediately for single media items
 				download.fromMedia(clientId, metadataId);
