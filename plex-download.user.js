@@ -255,7 +255,7 @@
 	modal.downloadSize   = modal.container.querySelector(`#${domPrefix}modal_downloadsize`);
 	
 	// Live updating collection of items
-	modal.items  = modal.itemContainer.getElementsByTagName("input");
+	modal.itemCheckboxes  = modal.itemContainer.getElementsByTagName("input");
 	
 	modal.firstTab = modal.topX;
 	modal.lastTab  = modal.downloadButton;
@@ -318,18 +318,17 @@
 	// Show the modal on screen
 	modal.open = function() {
 		// Reset all checkboxes
-		for (let item of modal.items) {
-			item.checked = true;
+		for (let checkbox of modal.itemCheckboxes) {
+			checkbox.checked = true;
 		}
 		
 		modal.checkAll.checked = true;
 		modal.checkBoxChange();
 		
 		document.body.appendChild(modal.container);
-		window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
 		
-		// Push history state so the back button will not navigate away from this page
-		history.pushState(history.state, '');
+		window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
+		window.addEventListener("popstate", modal.close);
 		
 		modal.lastTab.focus();
 		
@@ -338,14 +337,12 @@
 	}
 	
 	// Close modal
-	modal.close = function(e) {
-		// Go back here UNLESS this was a popstate event, where we already went back
-		if (!(e && e.type === "popstate")) {
-			history.back();
-		}
-		
+	modal.close = function() {
 		// Stop capturing keypresses
 		window.removeEventListener("keydown", modal.captureKeyPress, { capturing : true });
+		
+		// Stop listening to popstate too
+		window.removeEventListener("popstate", modal.close);
 		
 		// CSS animation exit, triggers the removal from the DOM
 		modal.container.classList.remove(`${domPrefix}open`);
@@ -355,11 +352,10 @@
 	modal.overlay.addEventListener("click", modal.close);
 	modal.popup.addEventListener("click", function(e) { e.stopPropagation() });
 	modal.topX.addEventListener("click", modal.close);
-	window.addEventListener("popstate", modal.close);
 	
 	modal.checkAll.addEventListener("change", function() {
-		for (let item of modal.items) {
-			item.checked = modal.checkAll.checked;
+		for (let checkbox of modal.itemCheckboxes) {
+			checkbox.checked = modal.checkAll.checked;
 		}
 		
 		modal.checkBoxChange();
@@ -368,9 +364,9 @@
 	// Download all checked items
 	modal.downloadButton.addEventListener("click", function() {
 		let clientId = modal.clientId.value;
-		for (let item of modal.items) {
-			if (item.checked) {
-				download.fromMedia(clientId, item.value);
+		for (let checkbox of modal.itemCheckboxes) {
+			if (checkbox.checked) {
+				download.fromMedia(clientId, checkbox.value);
 			}
 		}
 		modal.close();
@@ -379,9 +375,9 @@
 	modal.checkBoxChange = function() {
 		// Add up total filesize
 		let totalFilesize = 0;
-		for (let item of modal.items) {
-			if (item.checked) {
-				totalFilesize += serverData.servers[modal.clientId.value].mediaData[item.value].filesize;
+		for (let checkbox of modal.itemCheckboxes) {
+			if (checkbox.checked) {
+				totalFilesize += serverData.servers[modal.clientId.value].mediaData[checkbox.value].filesize;
 			}
 		}
 		
@@ -405,10 +401,12 @@
 				</label>
 			`;
 			
-			// Hook checking/unchecking the box to updating the filesize
-			item.querySelector(`#${domPrefix}item_checkbox_${childId}`).addEventListener("change", modal.checkBoxChange);
-			
 			modal.itemContainer.appendChild(item);
+		}
+		
+		// Hook checking/unchecking the box
+		for (let checkbox of modal.itemCheckboxes) {
+			checkbox.addEventListener("change", modal.checkBoxChange);
 		}
 		
 		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("displayName")) {
