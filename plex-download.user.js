@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.4.6
+// @version      1.4.7
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -329,7 +329,7 @@
 		window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
 		
 		// Push history state so the back button will not navigate away from this page
-		history.pushState({ }, '');
+		history.pushState(history.state, '');
 		
 		modal.lastTab.focus();
 		
@@ -338,7 +338,13 @@
 	}
 	
 	// Close modal
-	modal.close = function() {
+	modal.close = function(e) {
+		// Go back here UNLESS this was a popstate event, where we already went back
+		if (!(e && e.type === "popstate")) {
+			history.back();
+		}
+		
+		// Stop capturing keypresses
 		window.removeEventListener("keydown", modal.captureKeyPress, { capturing : true });
 		
 		// CSS animation exit, triggers the removal from the DOM
