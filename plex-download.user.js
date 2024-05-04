@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.4.9
+// @version      1.5.0
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -29,7 +29,9 @@
 	
 	
 	// Should not be visible in normal operation
+	const errorLog = [];
 	function errorHandle(msg) {
+		errorLog.push(msg);
 		console.log(`${logPrefix} ${msg.toString()}`);
 	}
 	
@@ -42,7 +44,7 @@
 		numbytes = parseInt(numbytes);
 		
 		if (isNaN(numbytes)) {
-			return "<unknown>";
+			return "?";
 		}
 		
 		// I don't care what hard drive manufacturers say, there are 1024 bytes in a kilobyte
@@ -59,6 +61,36 @@
 	}
 	
 	
+	// Turn a number of milliseconds to a more friendly HH:MM:SS display
+	function makeDuration(ms) {
+		ms = parseInt(ms);
+		if (isNaN(ms) || ms < 0) {
+			return "?";
+		}
+		
+		let h = Math.floor(ms/3600000);
+		let m = Math.floor((ms%3600000)/60000);
+		let s = Math.floor(((ms%3600000)%60000)/1000);
+		
+		let ret = [ h, m, s ];
+		
+		// If no hours, omit them. Leave minutes and seconds even if they're zero
+		if (ret[0] === 0) {
+			ret.shift();
+		}
+		
+		// Except for first unit, make sure all are two digits by prepending zero
+		// EG: 0:07 for 7s, 2:01:04 for 2h 1m 4s
+		for (let i = 1; i < ret.length; i++) {
+			ret[i] = ret[i].toString().padStart(2, '0');
+		}
+		
+		// Add separator
+		return ret.join(":")
+	}
+	
+	
+	
 	// The modal is the popup that prompts you for a selection of a group media item like a whole season of a TV show
 	const modal = {};
 	modal.container = document.createElement(`${domPrefix}element`);
@@ -67,15 +99,13 @@
 	// Styling and element tree as careful as possible to not interfere or be interfered with by Plex
 	modal.stylesheet = `
 		${domPrefix}element {
-			margin: 0;
-			padding: 0;
+			display: block;
 			color: #eee;
 		}
 		
 		#${domPrefix}modal_container {
 			width: 0;
 			height: 0;
-			display: block;
 			pointer-events: none;
 			transition: opacity 0.2s;
 			opacity: 0;
@@ -101,9 +131,14 @@
 		
 		#${domPrefix}modal_popup {
 			width: 90%;
-			max-width: 550px;
-			height: 80%;
-			max-height: 600px;
+			max-width: 750px;
+			
+		/*	height: 80%;		*/
+		/*	max-height: 650px;	*/
+			
+			min-height: 40%;
+			max-height: min(80%, 650px);
+		
 			display: flex;
 			flex-direction: column;
 			border-radius: 14px;
@@ -124,14 +159,19 @@
 			font-size: 16pt;
 		}
 		
-		#${domPrefix}modal_itemcontainer {
+		#${domPrefix}modal_scrollbox {
 			width: 100%;
 			overflow-y: scroll;
-			scrollbar-color: #777 #333;
+			scrollbar-color: #aaa #333;
 			background: #0005;
+			margin-top: 12px;
 			border-radius: 6px;
 			box-shadow: 0 0 4px 1px #0003 inset;
 			flex: 1;
+		}
+		
+		#${domPrefix}modal_container input[type="button"] {
+			transition: color 0.15s, background 0.15s, opacity 0.15s;
 		}
 		
 		#${domPrefix}modal_topx {
@@ -156,6 +196,10 @@
 			color: #000c;
 		}
 		
+		#${domPrefix}modal_topx:hover:active {
+			background: #fff7;
+		}
+		
 		#${domPrefix}modal_downloadbutton {
 			display: inline-flex;
 			justify-content: center;
@@ -167,7 +211,6 @@
 			color: #eee;
 			border: 1px solid #5555;
 			font-size: 14pt;
-			transition: opacity 0.15s;
 		}
 		
 		#${domPrefix}modal_downloadbutton:hover:not([disabled]) {
@@ -179,22 +222,52 @@
 			cursor: default;
 		}
 		
-		#${domPrefix}modal_container .${domPrefix}modal_item {
-			text-align: left;
-			width: 100%;
-			display: block;
+		.${domPrefix}modal_table_row {
+			display: table-row;
 		}
 		
-		#${domPrefix}modal_container .${domPrefix}modal_item label {
+		.${domPrefix}modal_table_header {
+			display: table-row;
+			font-weight: 600;
+			position: sticky;
+			top: 0;
+			background: #222;
+			box-shadow: 0 0 4px #000a;
+		}
+		
+		.${domPrefix}modal_table_header > *:not(:first-child) {
+			border-left: 1px solid #bcf1;
+		}
+		
+		.${domPrefix}modal_table_header > *:not(:last-child) {
+			border-right: 1px solid #bcf1;
+		}
+		
+		#${domPrefix}modal_container .${domPrefix}modal_table_cell {
+			padding: 8px;
+			display: table-cell;
+			vertical-align: middle;
+			text-align: center;
+		}
+		
+		#${domPrefix}modal_table_rowcontainer > *:nth-child(2n) {
+			background: #7781;
+		}
+		
+		#${domPrefix}modal_container label {
 			cursor: pointer;
-			padding: 7px 4px;
-			border-radius: 3px;
-			display: flex;
-			align-items: center;
 		}
 		
-		#${domPrefix}modal_container .${domPrefix}modal_item label:hover {
-			background: #fff1;
+		#${domPrefix}modal_container label:hover {
+			background: #bdf2;
+		}
+		
+		#${domPrefix}modal_container label:hover:active {
+			background: #b5d3ff28;
+		}
+		
+		#${domPrefix}modal_container label:has(input:not(:checked)) .${domPrefix}modal_table_cell {
+			color: #eee6;
 		}
 		
 		#${domPrefix}modal_container input[type="checkbox"] {
@@ -217,19 +290,33 @@
 		<${domPrefix}element id="${domPrefix}modal_overlay">
 			<${domPrefix}element id="${domPrefix}modal_popup" role="dialog" aria-modal="true" aria-labelledby="${domPrefix}modal_title" aria-describedby="${domPrefix}modal_downloaddescription">
 				<${domPrefix}element id="${domPrefix}modal_title">Download</${domPrefix}element>
-				<input type="button" id="${domPrefix}modal_topx" value="&#x2715;" aria-label="close" tabindex="0"/>
+				<input type="button" id="${domPrefix}modal_topx" value="&#x2715;" aria-label="close" title="Close" tabindex="0"/>
 				
-				<${domPrefix}element class="${domPrefix}modal_item">
-					<label for="${domPrefix}modal_checkall" style="font-weight: 600; color: inherit;">
-						<input type="checkbox" id="${domPrefix}modal_checkall" checked="true" tabindex="0"/>
-						<${domPrefix}element>Select all</${domPrefix}element>
-					</label>
+				<input type="hidden" id="${domPrefix}modal_clientid" tabindex="-1"/>
+				<input type="hidden" id="${domPrefix}modal_parentid" tabindex="-1"/>
+				
+				<${domPrefix}element id="${domPrefix}modal_scrollbox" aria-label="List of files that may be downloaded">
+					
+					<${domPrefix}element style="display:table; width:100%">
+						<${domPrefix}element style="display:table-header-group">
+							<${domPrefix}element class="${domPrefix}modal_table_header">
+								<label for="${domPrefix}modal_checkall" class="${domPrefix}modal_table_cell" title="Select all">
+									<input type="checkbox" id="${domPrefix}modal_checkall" checked tabindex="0"/>
+								</label>
+								<${domPrefix}element class="${domPrefix}modal_table_cell" style="width:100%">File</${domPrefix}element>
+								<${domPrefix}element class="${domPrefix}modal_table_cell">Runtime</${domPrefix}element>
+								<${domPrefix}element class="${domPrefix}modal_table_cell">Resolution</${domPrefix}element>
+								<${domPrefix}element class="${domPrefix}modal_table_cell">Type</${domPrefix}element>
+								<${domPrefix}element class="${domPrefix}modal_table_cell">Size</${domPrefix}element>
+							</${domPrefix}element>
+						</${domPrefix}element>
+						
+						<${domPrefix}element style="display:table-row-group" id="${domPrefix}modal_table_rowcontainer">
+							/* Items inserted here */
+						</${domPrefix}element>
+						
+					</${domPrefix}element>
 				</${domPrefix}element>
-				
-				<input type="hidden" tabindex="-1" id="${domPrefix}modal_clientid" />
-				<input type="hidden" tabindex="-1" id="${domPrefix}modal_parentid" />
-				
-				<${domPrefix}element id="${domPrefix}modal_itemcontainer"></${domPrefix}element>
 				
 				<${domPrefix}element style="display: block; margin: 1em;">
 					<${domPrefix}element id="${domPrefix}modal_downloaddescription"></${domPrefix}element>
@@ -237,9 +324,23 @@
 				
 				<${domPrefix}element>
 					<input type="button" id="${domPrefix}modal_downloadbutton" value="Download" tabindex="0"/>
-				</${domPrefix}element
+				</${domPrefix}element>
 			</${domPrefix}element>
 		</${domPrefix}element>
+	`;
+	
+	modal.itemTemplate = document.createElement(`label`);
+	modal.itemTemplate.className = `${domPrefix}modal_table_row`;
+	modal.itemTemplate.innerHTML = `
+		<${domPrefix}element class="${domPrefix}modal_table_cell">
+			<input type="checkbox" checked="true" tabindex="0"/>
+		</${domPrefix}element>
+		
+		<${domPrefix}element class="${domPrefix}modal_table_cell" style="text-align:left"></${domPrefix}element>
+		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
+		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
+		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
+		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
 	`;
 	
 	// Must use DocumentFragment here to access getElementById
@@ -249,7 +350,7 @@
 	modal.overlay             = modal.documentFragment.getElementById(`${domPrefix}modal_overlay`);
 	modal.popup               = modal.documentFragment.getElementById(`${domPrefix}modal_popup`);
 	modal.title               = modal.documentFragment.getElementById(`${domPrefix}modal_title`);
-	modal.itemContainer       = modal.documentFragment.getElementById(`${domPrefix}modal_itemcontainer`);
+	modal.itemContainer       = modal.documentFragment.getElementById(`${domPrefix}modal_table_rowcontainer`);
 	modal.topX                = modal.documentFragment.getElementById(`${domPrefix}modal_topx`);
 	modal.downloadButton      = modal.documentFragment.getElementById(`${domPrefix}modal_downloadbutton`);
 	modal.checkAll            = modal.documentFragment.getElementById(`${domPrefix}modal_checkall`);
@@ -258,7 +359,7 @@
 	modal.downloadDescription = modal.documentFragment.getElementById(`${domPrefix}modal_downloaddescription`);
 	
 	// Live updating collection of items
-	modal.itemCheckboxes  = modal.itemContainer.getElementsByTagName("input");
+	modal.itemCheckboxes = modal.itemContainer.getElementsByTagName("input");
 	
 	modal.firstTab = modal.topX;
 	modal.lastTab  = modal.downloadButton;
@@ -314,7 +415,7 @@
 		
 		// Look to remove the modal from the DOM
 		if (!modal.container.classList.contains(`${domPrefix}open`)) {
-			modal.container.remove();
+			modal.documentFragment.appendChild(modal.container);
 		}
 	});
 	
@@ -330,11 +431,14 @@
 		modal.checkAll.checked = true;
 		modal.checkBoxChange();
 		
+		// Add modal to DOM
 		document.body.appendChild(modal.container);
 		
+		// Set up event listeners
 		window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
 		window.addEventListener("popstate", modal.close);
 		
+		// Focus on the download button, such that "Enter" immediately will start download
 		modal.lastTab.focus();
 		
 		// CSS animation entrance
@@ -349,7 +453,7 @@
 		// Stop listening to popstate too
 		window.removeEventListener("popstate", modal.close);
 		
-		// CSS animation exit, triggers the removal from the DOM
+		// CSS animation exit, triggers the removal from the DOM on the transitionend event
 		modal.container.classList.remove(`${domPrefix}open`);
 	}
 	
@@ -366,8 +470,7 @@
 		modal.checkBoxChange();
 	});
 	
-	// Download all checked items
-	modal.downloadButton.addEventListener("click", function() {
+	modal.downloadChecked = function() {
 		let clientId = modal.clientId.value;
 		for (let checkbox of modal.itemCheckboxes) {
 			if (checkbox.checked) {
@@ -375,8 +478,11 @@
 			}
 		}
 		modal.close();
-	});
+	}
 	
+	modal.downloadButton.addEventListener("click", modal.downloadChecked);
+	
+	// Process a change to checkboxes inside the modal
 	modal.checkBoxChange = function() {
 		// Add up total filesize
 		let totalFilesize = 0;
@@ -388,7 +494,7 @@
 			}
 		}
 		
-		let description = `${selectedItems} item(s) selected. Total size: ${makeFilesize(totalFilesize)}`;
+		let description = `${selectedItems} file(s) selected. Total size: ${makeFilesize(totalFilesize)}`;
 		modal.downloadDescription.textContent = description;
 		modal.downloadButton.disabled = (totalFilesize === 0); // Can't download nothing
 	}
@@ -403,37 +509,64 @@
 			return;
 		}
 		
+		// Clear out container contents
 		while (modal.itemContainer.hasChildNodes()) {
 			modal.itemContainer.firstChild.remove();
-		}
+		} 
 		
-		for (let childId of serverData.servers[clientId].mediaData[metadataId].children) {
-			let item = document.createElement(`${domPrefix}element`);
-			item.className = `${domPrefix}modal_item`;
-			item.innerHTML = `
-				<label for="${domPrefix}item_checkbox_${childId}">
-					<input type="checkbox" id="${domPrefix}item_checkbox_${childId}" checked="true" value="${childId}" tabindex="0"/>
-					<${domPrefix}element>${serverData.servers[clientId].mediaData[childId].displayName}</${domPrefix}element>
-				</label>
-			`;
+		// Recursively follow children and add all of their media to the container
+		(function recurseMediaChildren(metadataId, titles) {
+			titles.push(serverData.servers[clientId].mediaData[metadataId].title);
 			
-			modal.itemContainer.appendChild(item);
-		}
+			if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("children")) {
+				// Must sort the children by index here so they appear in the proper order
+				serverData.servers[clientId].mediaData[metadataId].children.sort((a, b) => {
+					let mediaA = serverData.servers[clientId].mediaData[a];
+					let mediaB = serverData.servers[clientId].mediaData[b];
+					return mediaA.index - mediaB.index;
+				});
+				
+				for (let childId of serverData.servers[clientId].mediaData[metadataId].children) {
+					recurseMediaChildren(childId, titles);
+				}
+			} else {
+				let mediaData = serverData.servers[clientId].mediaData[metadataId];
+				let item = modal.itemTemplate.cloneNode(/*deep=*/true);
+				
+				let checkbox = item.getElementsByTagName("input")[0];
+				checkbox.id = `${domPrefix}item_checkbox_${metadataId}`;
+				checkbox.value = metadataId;
+				checkbox.addEventListener("change", modal.checkBoxChange);
+				
+				item.htmlFor = checkbox.id;
+				
+				// Ignore the first title, which is the modal title instead
+				let itemTitle = titles.slice(1).join(", "); 
+				
+				item.title = `Download ${itemTitle}`;
+				
+				let cells = item.getElementsByClassName(`${domPrefix}modal_table_cell`);
+				cells[1].textContent = itemTitle;
+				cells[2].textContent = makeDuration(mediaData.runtimeMS);
+				cells[3].textContent = mediaData.resolution;
+				cells[4].textContent = mediaData.filetype.toUpperCase();
+				cells[5].textContent = makeFilesize(mediaData.filesize);
+				
+				modal.itemContainer.appendChild(item);
+			}
+			
+			titles.pop();
+		})(metadataId, []);
 		
-		// Hook checking/unchecking the box
-		for (let checkbox of modal.itemCheckboxes) {
-			checkbox.addEventListener("change", modal.checkBoxChange);
-		}
+		// Set the modal title
+		modal.title.textContent = serverData.servers[clientId].mediaData[metadataId].title;
 		
-		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("displayName")) {
-			modal.title.textContent = serverData.servers[clientId].mediaData[metadataId].displayName;
-		} else {
-			modal.title.textContent = "Download";
-		}
-		
+		// Hidden values required for the button to work
+		// Also help detect if we don't need to repopulate the modal
 		modal.clientId.value = clientId;
 		modal.parentId.value = metadataId;
 		
+		// Refresh the item count/total filesize
 		modal.checkBoxChange();
 	}
 	
@@ -503,7 +636,6 @@
 	
 	
 	
-	
 	// Server identifiers and their respective data (loaded over API request)
 	const serverData = {
 		servers : {
@@ -536,7 +668,7 @@
 		}
 	}
 	
-	// Load server information for this user account from plex.tv API. Returns a bool indicating success
+	// Load server information for this user account from plex.tv API. Returns an async bool indicating success
 	serverData.load = async function() {
 		// Ensure access token
 		let serverToken = window.localStorage.getItem("myPlexAccessToken");
@@ -620,39 +752,221 @@
 		return true;
 	}
 	
-	// Merge video node data from API response into the serverData media cache
-	serverData.updateMedia = function(clientId, videoNode) {
-		let displayName;
-		switch (videoNode.type) {
-			case "episode":
-				displayName = `${videoNode.parentTitle} episode ${videoNode.index}, ${videoNode.title}`;
-				break;
-			
-			case "movie":
-				displayName = `${videoNode.title} (${videoNode.year})`;
-				break;
-			
-			default:
-				displayName = `${videoNode.title}`;
-				break;
-		}
-		
+	// Shorthand for updating server data on a media item entry
+	serverData.updateMediaDirectly = function(clientId, metadataId, newData) {
 		serverData.update({
 			servers : {
 				[clientId] : {
 					mediaData : {
-						[videoNode.ratingKey] : {
-							key         : videoNode.Media[0].Part[0].key,
-							displayName : displayName,
-							filesize    : videoNode.Media[0].Part[0].size,
-						}
+						[metadataId] : newData
 					}
 				}
 			}
 		});
 	}
 	
-	// Pull API response for this media item and handle parents/grandparents. Returns a bool indicating success
+	// Merge media noda data, excluding any file metadata, into the serverData media cache
+	serverData.updateMediaBase = function(clientId, mediaObject, topPromise, previousRecurse) {
+		// New data to add to this media item
+		let mediaObjectData = {
+			title : mediaObject.title,
+			index : 0,
+		};
+		
+		// Index is used for sorting correctly when displayed in the modal
+		// Some items are unindexed, and that's fine, they will be displayed in whatever order
+		if (mediaObject.hasOwnProperty("index")) {
+			mediaObjectData.index = mediaObject.index;
+		}
+		
+		
+		// Determine title
+		// Note if this is a parent item, its title may be overwritten by its children .parentTitle
+		// Therefore, only leaves can have these special titles apply
+		switch (mediaObject.type) {
+			case "episode":
+				mediaObjectData.title = `Episode ${mediaObject.index}: ${mediaObject.title}`;
+				break;
+			
+			case "movie":
+				mediaObjectData.title = `${mediaObject.title} (${mediaObject.year})`;
+				break;
+		}
+		
+		// Copy the top level promise in case this is a lower recursion level.
+		// If this isn't a lower recursion level, the promise is already there.
+		// NOTE: this causes a bug where a media item request that is followed by a 
+		// children request can be double-requested if it itself is a child of something else.
+		// The API recurse will go item1 -> children -> item2 -> children, ignoring that item2
+		// may already be in the media cache with a resolved promise. To avoid this, there would
+		// need to be a check here if a media object already exists in the cache and then abort
+		// further media data updating for it and its children. This is very annoying, and mostly
+		// the fault of collections containing TV shows.
+		if (previousRecurse) {
+			mediaObjectData.promise = topPromise;
+		}
+		
+		// Merge new data
+		serverData.updateMediaDirectly(clientId, mediaObject.ratingKey, mediaObjectData);
+		
+		// Shorthand to add a child entry, if not already present, into a parent
+		// Also can merge potentially otherwise missing data that the child knows about the parent
+		function updateParent(childId, parentId, otherData) {
+			if (otherData) {
+				serverData.updateMediaDirectly(clientId, parentId, otherData);
+			}
+			
+			serverData.updateMediaDirectly(clientId, parentId, {
+				children : [],
+			});
+			
+			// Could use a Set object potentially instead
+			if (!serverData.servers[clientId].mediaData[parentId].children.includes(childId)) {
+				serverData.servers[clientId].mediaData[parentId].children.push(childId);
+			}
+		}
+		
+		// Handle parent, if neccessary
+		if (mediaObject.hasOwnProperty("parentRatingKey")) {
+			let parentData = {
+				title : mediaObject.parentTitle,
+			};
+			
+			// Copy index for sorting if we have it
+			if (mediaObject.hasOwnProperty("parentIndex")) {
+				parentData.index = mediaObject.parentIndex;
+			}
+			
+			// Copy promise to parent (season), if this was part of a show request
+			// This isn't strictly required, but it reduces double-requesting
+			if (previousRecurse && previousRecurse.type === "show" && mediaObject.type === "episode") {
+				parentData.promise = topPromise;
+			}
+			
+			updateParent(mediaObject.ratingKey, mediaObject.parentRatingKey, parentData);
+
+			
+			// Handle grandparent, if neccessary
+			if (mediaObject.hasOwnProperty("grandparentRatingKey")) {
+				let grandparentData = {
+					title : mediaObject.grandparentTitle,
+				};
+				
+				// Copy index for sorting if we have it
+				if (mediaObject.hasOwnProperty("grandparentIndex")) {
+					grandparentData.index = mediaObject.grandparentIndex;
+				}
+				
+				updateParent(mediaObject.parentRatingKey, mediaObject.grandparentRatingKey, grandparentData);
+			}
+		}
+		
+		// Update collection parent, if this was part of a collection
+		// Collections are weird, they contain children but the child has no idea it's part of a collection (most of the time)
+		if (previousRecurse && previousRecurse.type === "collection") {
+			updateParent(mediaObject.ratingKey, previousRecurse.ratingKey);
+		}
+	}
+	
+	// Merge media node file metadata from API response into the serverData media cache
+	serverData.updateMediaFileInfo = function(clientId, mediaObject, previousRecurse) {
+		// Values we expect plus default values for fields needed by the modal
+		let fileInfo = {
+			key        : mediaObject.Media[0].Part[0].key,
+			filesize   : mediaObject.Media[0].Part[0].size,
+			filetype   : "?",
+			resolution : "?",
+			runtimeMS  : -1,
+		}
+		
+		// Use multiple fallbacks in case something goes weird here
+		if (mediaObject.Media[0].hasOwnProperty("container")) {
+			fileInfo.filetype = mediaObject.Media[0].container;
+		} else if (mediaObject.Media[0].Part[0].hasOwnProperty("container")) {
+			fileInfo.filetype = mediaObject.Media[0].Part[0].container;
+		} else if (fileInfo.key.lastIndexOf(".") !== -1) {
+			fileInfo.filetype = fileInfo.key.slice(fileInfo.key.lastIndexOf(".") + 1);
+		}
+		
+		
+		if (mediaObject.Media[0].hasOwnProperty("videoResolution")) {
+			fileInfo.resolution = mediaObject.Media[0].videoResolution.toUpperCase();
+			if ([ "144", "240", "480", "720", "1080" ].includes(fileInfo.resolution)) {
+				// A specific p resolution
+				fileInfo.resolution += "p"; 
+			}
+		}
+		
+		if (mediaObject.Media[0].hasOwnProperty("duration")) {
+			// Duration is measured in milliseconds
+			fileInfo.runtimeMS = mediaObject.Media[0].duration;
+		}
+		
+		serverData.updateMediaDirectly(clientId, mediaObject.ratingKey, fileInfo);
+	}
+	
+	// Recursive function that will follow children/leaves of an API call and store them all into mediaData
+	// Returns an async bool of success
+	serverData.recurseMediaApi = async function(clientId, apiPath, topPromise, previousRecurse) {
+		const baseUri     = serverData.servers[clientId].baseUri;
+		const accessToken = serverData.servers[clientId].accessToken;
+		
+		let responseJSON;
+		try {
+			responseJSON = await fetchJSON(`${baseUri}${apiPath}`);
+		} catch(e) {
+			// Network failure, try the fallback URI for this server
+			if (serverData.servers[clientId].fallbackUri) {
+				serverData.servers[clientId].baseUri = serverData.servers[clientId].fallbackUri;
+				serverData.servers[clientId].fallbackUri = false;
+				
+				// Run again from the top
+				return await serverData.recurseMediaApi(clientId, apiPath, topPromise, previousRecurse);
+			} else {
+				errorHandle(`Could not establish connection to server at ${serverData.servers[clientId].baseUri}: ${e}`);
+				return false;
+			}
+		}
+		
+		const recursionPromises = [];
+		
+		for (let i = 0; i < responseJSON.MediaContainer.Metadata.length; i++) {
+			let mediaObject = responseJSON.MediaContainer.Metadata[i];
+			
+			// Record basic information about this media object before looking deeper into what it is
+			serverData.updateMediaBase(clientId, mediaObject, topPromise, previousRecurse);
+			
+			if (mediaObject.hasOwnProperty("Media")) {
+				serverData.updateMediaFileInfo(clientId, mediaObject, previousRecurse);
+				continue;
+			}
+			
+			if (mediaObject.hasOwnProperty("leafCount") || mediaObject.hasOwnProperty("childCount")) {
+				// Very stupid quirk of the Plex API: it will tell you something has leaves, but then calling allLeaves gives nothing.
+				// Only when something has children AND leaves can you use allLeaves
+				// (like a TV show could have 10 children (seasons) and 100 leaves (episodes))
+				if (
+					mediaObject.hasOwnProperty("childCount") && 
+					mediaObject.hasOwnProperty("leafCount") && 
+					(mediaObject.childCount !== mediaObject.leafCount)
+				) {
+					let leafUri = `/library/metadata/${mediaObject.ratingKey}/allLeaves?X-Plex-Token=${accessToken}`;
+					let recursion = serverData.recurseMediaApi(clientId, leafUri, topPromise, mediaObject);
+					recursionPromises.push(recursion);
+					continue;
+				} else {
+					let childUri = `/library/metadata/${mediaObject.ratingKey}/children?X-Plex-Token=${accessToken}`;
+					let recursion = serverData.recurseMediaApi(clientId, childUri, topPromise, mediaObject);
+					recursionPromises.push(recursion);
+					continue;
+				}
+			}
+		}
+		
+		return await Promise.all(recursionPromises);
+	}
+	
+	// Start pulling an API response for this media item. Returns an async bool indicating success
 	serverData.loadMediaData = async function(clientId, metadataId) {
 		// Make sure server data has loaded in
 		if (!(await serverData.available())) {
@@ -667,80 +981,13 @@
 			return false;
 		}
 		
-		const baseUri     = serverData.servers[clientId].baseUri;
 		const accessToken = serverData.servers[clientId].accessToken;
+		const promise     = serverData.servers[clientId].mediaData[metadataId].promise;
 		
-		try {
-			// Request library data from this server using metadata ID
-			const libraryUrl  = `${baseUri}/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`;
-			const libraryJSON = await fetchJSON(libraryUrl);
-			
-			// Determine if this is media or just a parent to media
-			let leafCount = false;
-			if (libraryJSON.MediaContainer.Metadata[0].hasOwnProperty("leafCount")) {
-				leafCount = libraryJSON.MediaContainer.Metadata[0].leafCount;
-			}
-			
-			let childCount = false;
-			if (libraryJSON.MediaContainer.Metadata[0].hasOwnProperty("childCount")) {
-				childCount = libraryJSON.MediaContainer.Metadata[0].childCount;
-			}
-			
-			if (leafCount || childCount) {
-				// This is a group media item (show, season) with children
-				
-				// Get all of its children, either by leaves or children directly
-				// A series only has seasons as children, not the episodes. allLeaves must be used there
-				let childrenUrl;
-				if (childCount && leafCount && (childCount !== leafCount)) {
-					childrenUrl = `${baseUri}/library/metadata/${metadataId}/allLeaves?X-Plex-Token=${accessToken}`;
-				} else {
-					childrenUrl = `${baseUri}/library/metadata/${metadataId}/children?X-Plex-Token=${accessToken}`;
-				}
-				
-				const childrenJSON = await fetchJSON(childrenUrl);
-				const childVideoNodes = childrenJSON.MediaContainer.Metadata;
-				
-				// Save a title for this if possible
-				if (libraryJSON.MediaContainer.Metadata[0].hasOwnProperty("title")) {
-					serverData.servers[clientId].mediaData[metadataId].displayName = libraryJSON.MediaContainer.Metadata[0].title;
-				}
-				
-				// Iterate over the children of this media item and gather their data
-				serverData.servers[clientId].mediaData[metadataId].children = [];
-				
-				for (let i = 0; i < childVideoNodes.length; i++) {
-					let childMetadataId = childVideoNodes[i].ratingKey;
-					serverData.updateMedia(clientId, childVideoNodes[i]);
-					
-					serverData.servers[clientId].mediaData[metadataId].children.push(childMetadataId);
-					
-					// Copy promise to child
-					serverData.servers[clientId].mediaData[childMetadataId].promise = serverData.servers[clientId].mediaData[metadataId].promise;
-				}
-			} else {
-				// This is a regular media item (episode, movie)
-				const videoNode = libraryJSON.MediaContainer.Metadata[0];
-				serverData.updateMedia(clientId, videoNode);
-			}
-		} catch(e) {
-			// Initial request(s) failed, but we can try again if there is a fallback to use
-			if (serverData.servers[clientId].fallbackUri) {
-				serverData.servers[clientId].baseUri = serverData.servers[clientId].fallbackUri;
-				serverData.servers[clientId].fallbackUri = false;
-				
-				// Run again from the top
-				return await serverData.loadMediaData(clientId, metadataId);
-			} else {
-				errorHandle(`Could not establish connection to server at ${serverData.servers[clientId].baseUri}: ${e}`);
-				return false;
-			}
-		}
-		
-		return true;
+		return await serverData.recurseMediaApi(clientId, `/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`, promise);
 	}
 	
-	// Try to ensure media data is loaded for a given item. Returns a bool indicating if the item is available
+	// Try to ensure media data is loaded for a given item. Returns an async bool indicating if the item is available
 	serverData.mediaAvailable = async function(clientId, metadataId) {
 		if (serverData.servers[clientId].mediaData[metadataId].promise) {
 			return await serverData.servers[clientId].mediaData[metadataId].promise;
@@ -808,22 +1055,15 @@
 			DOMObserver.observe();
 		}
 		
-		// Create media entry early
-		serverData.update({
-			servers : {
-				[urlIds.clientId] : {
-					mediaData : {
-						[urlIds.metadataId] : { }
-					}
-				}
-			}
-		});
+		// Create empty media entry early
+		serverData.updateMediaDirectly(urlIds.clientId, urlIds.metadataId, {});
 		
 		if (!(await serverData.mediaAvailable(urlIds.clientId, urlIds.metadataId))) {
 			let mediaPromise = serverData.loadMediaData(urlIds.clientId, urlIds.metadataId);
 			serverData.servers[urlIds.clientId].mediaData[urlIds.metadataId].promise = mediaPromise;
 		}
 	}
+	
 	
 	
 	let download = {};
@@ -873,6 +1113,7 @@
 			}
 		}
 	}
+	
 	
 	
 	// Create and add the new DOM element, return a reference to it
@@ -935,6 +1176,7 @@
 		
 		return downloadButton;
 	}
+	
 	
 	// Activate DOM element and hook clicking with function. Returns bool indicating success
 	async function domCallback(domElement, clientId, metadataId) {
