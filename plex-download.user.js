@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.0
+// @version      1.5.1
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -42,8 +42,7 @@
 		let ui = 0;
 		
 		numbytes = parseInt(numbytes);
-		
-		if (isNaN(numbytes)) {
+		if (isNaN(numbytes) || numbytes < 0) {
 			return "?";
 		}
 		
@@ -130,15 +129,10 @@
 		}
 		
 		#${domPrefix}modal_popup {
-			width: 90%;
-			max-width: 750px;
-			
-		/*	height: 80%;		*/
-		/*	max-height: 650px;	*/
-			
+			min-width: 33%;
+			max-width: 90%;
 			min-height: 40%;
 			max-height: min(80%, 650px);
-		
 			display: flex;
 			flex-direction: column;
 			border-radius: 14px;
@@ -222,11 +216,11 @@
 			cursor: default;
 		}
 		
-		.${domPrefix}modal_table_row {
+		#${domPrefix}modal_container .${domPrefix}modal_table_row {
 			display: table-row;
 		}
 		
-		.${domPrefix}modal_table_header {
+		#${domPrefix}modal_container .${domPrefix}modal_table_header {
 			display: table-row;
 			font-weight: 600;
 			position: sticky;
@@ -235,11 +229,11 @@
 			box-shadow: 0 0 4px #000a;
 		}
 		
-		.${domPrefix}modal_table_header > *:not(:first-child) {
+		#${domPrefix}modal_container .${domPrefix}modal_table_header > *:not(:first-child) {
 			border-left: 1px solid #bcf1;
 		}
 		
-		.${domPrefix}modal_table_header > *:not(:last-child) {
+		#${domPrefix}modal_container .${domPrefix}modal_table_header > *:not(:last-child) {
 			border-right: 1px solid #bcf1;
 		}
 		
@@ -304,6 +298,7 @@
 									<input type="checkbox" id="${domPrefix}modal_checkall" checked tabindex="0"/>
 								</label>
 								<${domPrefix}element class="${domPrefix}modal_table_cell" style="width:100%">File</${domPrefix}element>
+								<${domPrefix}element class="${domPrefix}modal_table_cell">Watched</${domPrefix}element>
 								<${domPrefix}element class="${domPrefix}modal_table_cell">Runtime</${domPrefix}element>
 								<${domPrefix}element class="${domPrefix}modal_table_cell">Resolution</${domPrefix}element>
 								<${domPrefix}element class="${domPrefix}modal_table_cell">Type</${domPrefix}element>
@@ -312,7 +307,7 @@
 						</${domPrefix}element>
 						
 						<${domPrefix}element style="display:table-row-group" id="${domPrefix}modal_table_rowcontainer">
-							/* Items inserted here */
+							<!-- Items inserted here -->
 						</${domPrefix}element>
 						
 					</${domPrefix}element>
@@ -337,6 +332,7 @@
 		</${domPrefix}element>
 		
 		<${domPrefix}element class="${domPrefix}modal_table_cell" style="text-align:left"></${domPrefix}element>
+		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
 		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
 		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
 		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
@@ -540,6 +536,8 @@
 				
 				item.htmlFor = checkbox.id;
 				
+				item.setAttribute(`${domPrefix}viewed`, mediaData.viewed);
+				
 				// Ignore the first title, which is the modal title instead
 				let itemTitle = titles.slice(1).join(", "); 
 				
@@ -547,10 +545,11 @@
 				
 				let cells = item.getElementsByClassName(`${domPrefix}modal_table_cell`);
 				cells[1].textContent = itemTitle;
-				cells[2].textContent = makeDuration(mediaData.runtimeMS);
-				cells[3].textContent = mediaData.resolution;
-				cells[4].textContent = mediaData.filetype.toUpperCase();
-				cells[5].textContent = makeFilesize(mediaData.filesize);
+				cells[2].textContent = mediaData.viewed ? "\u2713" : "";  // U+2713 is a checkmark symbol
+				cells[3].textContent = makeDuration(mediaData.runtimeMS);
+				cells[4].textContent = mediaData.resolution;
+				cells[5].textContent = mediaData.filetype.toUpperCase();
+				cells[6].textContent = makeFilesize(mediaData.filesize);
 				
 				modal.itemContainer.appendChild(item);
 			}
@@ -559,7 +558,7 @@
 		})(metadataId, []);
 		
 		// Set the modal title
-		modal.title.textContent = serverData.servers[clientId].mediaData[metadataId].title;
+		modal.title.textContent = `Download from ${serverData.servers[clientId].mediaData[metadataId].title}`;
 		
 		// Hidden values required for the button to work
 		// Also help detect if we don't need to repopulate the modal
@@ -779,7 +778,6 @@
 			mediaObjectData.index = mediaObject.index;
 		}
 		
-		
 		// Determine title
 		// Note if this is a parent item, its title may be overwritten by its children .parentTitle
 		// Therefore, only leaves can have these special titles apply
@@ -877,6 +875,7 @@
 			filetype   : "?",
 			resolution : "?",
 			runtimeMS  : -1,
+			viewed     : false,
 		}
 		
 		// Use multiple fallbacks in case something goes weird here
@@ -887,7 +886,6 @@
 		} else if (fileInfo.key.lastIndexOf(".") !== -1) {
 			fileInfo.filetype = fileInfo.key.slice(fileInfo.key.lastIndexOf(".") + 1);
 		}
-		
 		
 		if (mediaObject.Media[0].hasOwnProperty("videoResolution")) {
 			fileInfo.resolution = mediaObject.Media[0].videoResolution.toUpperCase();
@@ -900,6 +898,11 @@
 		if (mediaObject.Media[0].hasOwnProperty("duration")) {
 			// Duration is measured in milliseconds
 			fileInfo.runtimeMS = mediaObject.Media[0].duration;
+		}
+		
+		// Checked viewcount for viewed flag
+		if (mediaObject.hasOwnProperty("viewCount") && mediaObject.viewCount !== 0) {
+			fileInfo.viewed = true;
 		}
 		
 		serverData.updateMediaDirectly(clientId, mediaObject.ratingKey, fileInfo);
@@ -976,7 +979,7 @@
 		
 		// Get access token and base URI for this server
 		if (!serverData.servers[clientId].hasOwnProperty("baseUri") ||
-			!serverData.servers[clientId].hasOwnProperty("accessToken")) {
+		    !serverData.servers[clientId].hasOwnProperty("accessToken")) {
 			errorHandle(`No server information for clientId ${clientId} when trying to load media data`);
 			return false;
 		}
