@@ -36,7 +36,7 @@
 	}
 	
 	
-	// Redact potentially sensitive information from a URL so it can be safely used for error reports.
+	// Redact potentially sensitive information from a URL so it can be safely used for error reports
 	const ipAddrRegex       = /^\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}$/;
 	const ipAddrReplace     = "1-1-1-1";
 	const hexStartRegex     = /^[0-9a-f]{16}/;
@@ -663,7 +663,59 @@
 		// Promise for loading server data, ensure it is loaded before we try to pull media data
 		promise : null,
 	};
-	serverData.xmlParser = new DOMParser();
+	
+	// Wrapper to make an API call to a specific Plex server
+	serverData.apiCall = async function(clientId, apiPath) {
+		const baseUri     = serverData.servers[clientId].baseUri;
+		const accessToken = serverData.servers[clientId].accessToken;
+		
+		const apiUrl = new URL(`${baseUri}${apiPath}`);
+		apiUrl.searchParams.set("X-Plex-Token", accessToken);
+		
+		try {
+			// Headers here are required for Plex API to respond in JSON
+			let response = await fetch(apiUrl.href, { headers : { accept : "application/json" } });
+			if (!response.ok) {
+				// If the server responds with non-OK, then there is a non-network related issue
+				// Perhaps on a bad page with invalid URL?
+				errorHandle(`Could not retrieve API data at ${redactUrl(apiUrl.href)} : received response code ${response.status}`);
+				return false;
+			}
+			
+			// Parse JSON body, may fail with SyntaxError
+			let responseJSON = await response.json();
+			
+			return responseJSON;
+			
+		} catch (exception) {
+			switch (exception.name) {
+				case "TypeError":
+					// Network failure, try the fallback URI for this server
+					if (serverData.servers[clientId].fallbackUri) {
+						serverData.servers[clientId].baseUri = serverData.servers[clientId].fallbackUri;
+						serverData.servers[clientId].fallbackUri = false;
+						
+						// Run again from the top
+						return await serverData.apiCall(clientId, apiPath);
+					} else {
+						errorHandle(`Could not establish connection to server at ${redactUrl(apiUrl.href)} : ${exception.message}`);
+					}
+					
+					break;
+				
+				case "SyntaxError":
+					// Did not parse JSON, malformed response in some way
+					errorHandle(`Could not parse API JSON at ${redactUrl(apiUrl.href)} : ${exception.message}`);
+					break;
+				
+				default:
+					errorHandle(`Could not retrieve API data at ${redactUrl(apiUrl.href)} : ${exception.message}`);
+					break;
+			}
+			
+			return false;
+		}
+	}
 	
 	// Merge new data object into serverData
 	serverData.update = function(newData, serverDataScope) {
@@ -680,19 +732,40 @@
 		}
 	}
 	
+	// Make sure a server is online and allows downloads
+	serverData.checkServer = async function(clientId) {
+		const apiPath = "/media/providers/";
+		
+		let responseJSON = await serverData.apiCall(clientId, apiPath);
+		if (responseJSON === false) {
+			return false;
+		}
+		
+		serverData.servers[clientId].allowsDl = responseJSON.MediaContainer.allowSync;
+		
+		// True here just meaning this request succeeded, nothing about the allowsDl field
+		return true;
+	}
+	
 	// Load server information for this user account from plex.tv API. Returns an async bool indicating success
 	serverData.load = async function() {
 		// Ensure access token
-		let serverToken = window.localStorage.getItem("myPlexAccessToken");
-		if (serverToken === null) {
+		let serverToken  = window.localStorage.getItem("myPlexAccessToken");
+		let browserToken = window.localStorage.getItem("clientID")
+		if (serverToken === null || browserToken === null) {
 			errorHandle(`Cannot find a valid access token (localStorage Plex token missing).`);
 			return false;
 		}
 		
-		const apiResourceUrl = `https://plex.tv/api/resources?includeHttps=1&includeRelay=1&X-Plex-Token=${serverToken}`;
-		let resourceXml;
+		const apiResourceUrl = new URL("https://clients.plex.tv/api/v2/resources");
+		apiResourceUrl.searchParams.set("includeHttps", "1");
+		apiResourceUrl.searchParams.set("includeRelay", "1");
+		apiResourceUrl.searchParams.set("X-Plex-Client-Identifier", browserToken);
+		apiResourceUrl.searchParams.set("X-Plex-Token", serverToken);
+		
+		let resourceJSON;
 		try {
-			let response = await fetch(apiResourceUrl);
+			let response = await fetch(apiResourceUrl.href, { headers : { accept : "application/json" } });
 			if (!response.ok) {
 				// If Plex responds with non-OK, then there is a non-network related issue
 				// Perhaps Plex is down, serving 500s?
@@ -700,18 +773,17 @@
 				return false;
 			}
 			
-			let responseText = await response.text();
-			
-			// Interestingly, parseFromString on failure does NOT throw an exception, rather it just gives you 
-			// an XML document with a <parsererror> node in it. It will spit an error out in the console, but 
-			// this error is not actually catchable.
-			resourceXml = serverData.xmlParser.parseFromString(responseText, "text/xml");
+			resourceJSON = await response.json();
 		} catch (exception) {
 			switch (exception.name) {
 				case "TypeError":
 					errorHandle(`Network error occurred while retrieving Plex resources: ${exception.message}`);
 					break;
 				
+				case "SyntaxError":
+					errorHandle(`Could not parse JSON while retrieving Plex resources: ${exception.message}`);
+					break;
+					
 				default:
 					errorHandle(`Unknown error occurred while retrieving Plex resources: ${exception.message}`);
 					break;
@@ -720,51 +792,56 @@
 			return false;
 		}
 		
-		const serverInfoXPath  = ".//Device[@provides='server']";
-		const servers = resourceXml.evaluate(serverInfoXPath, resourceXml, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
-		// Stupid ugly iterator pattern. Yes this is how you're supposed to do this
-		// https://developer.mozilla.org/en-US/docs/Web/API/XPathResult/iterateNext
-		let server;
-		while (server = servers.iterateNext()) {
-			const clientId    = server.getAttribute("clientIdentifier");
-			const accessToken = server.getAttribute("accessToken");
-			if (!clientId || !accessToken) {
+		
+		for (let i = 0; i < resourceJSON.length; i++) {
+			let server = resourceJSON[i];
+			
+			if (!server.hasOwnProperty("clientIdentifier") || !server.hasOwnProperty("accessToken")) {
 				errorHandle(`Cannot find valid server information (missing ID or token in API response).`);
 				continue;
 			}
 			
-			const connectionXPath = ".//Connection[@local='0']";
-			const conn = resourceXml.evaluate(connectionXPath, server, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-			if (!conn.singleNodeValue || !conn.singleNodeValue.getAttribute("uri")) {
+			const clientId    = server.clientIdentifier;
+			const accessToken = server.accessToken;
+			
+			const connection = server.connections.find(connection => (!connection.local && !connection.relay));
+			if (!connection || !connection.hasOwnProperty("uri")) {
 				errorHandle(`Cannot find valid server information (no connection data for server ${clientId}).`);
 				continue;
 			}
 			
-			const baseUri = conn.singleNodeValue.getAttribute("uri");
-			
+			const baseUri = connection.uri;
 			serverData.update({
 				servers : {
 					[clientId] : {
 						baseUri     : baseUri,
 						accessToken : accessToken,
 						mediaData   : {},
+						allowsDl    : "indeterminate",
 					}
 				}
 			});
 			
 			
-			const relayXPath = ".//Connection[@relay='1']";
-			const relay = resourceXml.evaluate(relayXPath, server, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-			if (!relay.singleNodeValue || !relay.singleNodeValue.getAttribute("uri")) {
+			const relay = server.connections.find(connection => (!connection.local && connection.relay));
+			if (relay && relay.hasOwnProperty("uri")) {
 				// Can ignore a possible error here as this is only a fallback option
-				continue;
+				const fallbackUri = relay.uri;
+				serverData.update({
+					servers : {
+						[clientId] : {
+							fallbackUri : fallbackUri,
+						}
+					}
+				});
 			}
 			
-			const fallbackUri = relay.singleNodeValue.getAttribute("uri");
+			
+			// Run checks
 			serverData.update({
 				servers : {
 					[clientId] : {
-						fallbackUri : fallbackUri,
+						check : serverData.checkServer(clientId),
 					}
 				}
 			});
@@ -946,49 +1023,8 @@
 	// Recursive function that will follow children/leaves of an API call and store them all into mediaData
 	// Returns an async bool of success
 	serverData.recurseMediaApi = async function(clientId, apiPath, topPromise, previousRecurse) {
-		const baseUri     = serverData.servers[clientId].baseUri;
-		const accessToken = serverData.servers[clientId].accessToken;
-		
-		let responseJSON;
-		try {
-			// Headers here are required for Plex API to respond in JSON
-			let response = await fetch(`${baseUri}${apiPath}`, { headers : { accept : "application/json" } });
-			if (!response.ok) {
-				// If the server responds with non-OK, then there is a non-network related issue
-				// Perhaps on a bad page with invalid URL?
-				errorHandle(`Could not retrieve API data at ${redactUrl(baseUri + apiPath)} : received HTTP ${response.status}`);
-				return false;
-			}
-			
-			// Parse JSON body, may fail with SyntaxError
-			responseJSON = await response.json();
-			
-		} catch (exception) {
-			switch (exception.name) {
-				case "TypeError":
-					// Network failure, try the fallback URI for this server
-					if (serverData.servers[clientId].fallbackUri) {
-						serverData.servers[clientId].baseUri = serverData.servers[clientId].fallbackUri;
-						serverData.servers[clientId].fallbackUri = false;
-						
-						// Run again from the top
-						return await serverData.recurseMediaApi(clientId, apiPath, topPromise, previousRecurse);
-					} else {
-						errorHandle(`Could not establish connection to server at ${redactUrl(baseUri + apiPath)} : ${exception.message}`);
-					}
-					
-					break;
-				
-				case "SyntaxError":
-					// Did not parse JSON, malformed response in some way
-					errorHandle(`Could not parse API JSON at ${redactUrl(baseUri + apiPath)} : ${exception.message}`);
-					break;
-				
-				default:
-					errorHandle(`Could not retrieve API data at ${redactUrl(baseUri + apiPath)} : ${exception.message}`);
-					break;
-			}
-			
+		let responseJSON = await serverData.apiCall(clientId, apiPath);
+		if (responseJSON === false) {
 			return false;
 		}
 		
@@ -1014,13 +1050,13 @@
 					mediaObject.hasOwnProperty("leafCount") && 
 					(mediaObject.childCount !== mediaObject.leafCount)
 				) {
-					let leafUri = `/library/metadata/${mediaObject.ratingKey}/allLeaves?X-Plex-Token=${accessToken}`;
-					let recursion = serverData.recurseMediaApi(clientId, leafUri, topPromise, mediaObject);
+					let leafPath = `/library/metadata/${mediaObject.ratingKey}/allLeaves`;
+					let recursion = serverData.recurseMediaApi(clientId, leafPath, topPromise, mediaObject);
 					recursionPromises.push(recursion);
 					continue;
 				} else {
-					let childUri = `/library/metadata/${mediaObject.ratingKey}/children?X-Plex-Token=${accessToken}`;
-					let recursion = serverData.recurseMediaApi(clientId, childUri, topPromise, mediaObject);
+					let childPath = `/library/metadata/${mediaObject.ratingKey}/children`;
+					let recursion = serverData.recurseMediaApi(clientId, childPath, topPromise, mediaObject);
 					recursionPromises.push(recursion);
 					continue;
 				}
@@ -1034,7 +1070,6 @@
 	serverData.loadMediaData = async function(clientId, metadataId) {
 		// Make sure server data has loaded in
 		if (!(await serverData.available())) {
-			errorHandle(`Server information loading failed, trying again on next trigger.`);
 			return false;
 		}
 		
@@ -1045,10 +1080,23 @@
 			return false;
 		}
 		
-		const accessToken = serverData.servers[clientId].accessToken;
-		const promise     = serverData.servers[clientId].mediaData[metadataId].promise;
+		// Make sure this server is alive and allows downloads
+		if (!(await serverData.servers[clientId].check)) {
+			// Check again if we couldn't complete the previous check
+			serverData.servers[clientId].check = serverData.checkServer(clientId);
+			if (!(await serverData.servers[clientId].check)) {
+				// This should have already triggered an errorHandle at the failed request
+				return false;
+			}
+		}
 		
-		return await serverData.recurseMediaApi(clientId, `/library/metadata/${metadataId}?X-Plex-Token=${accessToken}`, promise);
+		if (serverData.servers[clientId].allowsDl === false) {
+			// Downloading disabled by server
+			return false;
+		}
+		
+		const promise = serverData.servers[clientId].mediaData[metadataId].promise;
+		return await serverData.recurseMediaApi(clientId, `/library/metadata/${metadataId}`, promise);
 	}
 	
 	// Try to ensure media data is loaded for a given item. Returns an async bool indicating if the item is available
@@ -1132,12 +1180,15 @@
 	
 	let download = {};
 	
-	download.frameName = `${domPrefix}downloadFrame`;
+	download.frameClass = `${domPrefix}downloadFrame`;
+	
+	// Live collection of frames
+	download.frames = document.getElementsByClassName(download.frameClass);
 	
 	// Initiate a download of a URI using iframes
 	download.fromUri = function(uri) {
 		let frame = document.createElement("iframe");
-		frame.name = download.frameName;
+		frame.className = download.frameClass;
 		frame.style = "display: none !important;";
 		document.body.appendChild(frame);
 		frame.src = uri;
@@ -1146,9 +1197,8 @@
 	// Clean up old DOM elements from previous downloads, if needed
 	download.cleanUp = function() {
 		// There is no way to detect when the download dialog is closed, so just clean up here to prevent DOM clutter
-		let oldFrames = document.getElementsByName(download.frameName);
-		while (oldFrames.length !== 0) {
-			oldFrames[0].remove();
+		while (download.frames.length !== 0) {
+			download.frames[0].remove();
 		}
 	}
 	
@@ -1158,8 +1208,12 @@
 		const baseUri     = serverData.servers[clientId].baseUri;
 		const accessToken = serverData.servers[clientId].accessToken;
 		
-		const uri = `${baseUri}${key}?X-Plex-Token=${accessToken}&download=1`;
-		return uri;
+		const url = new URL(`${baseUri}${key}`);
+		
+		url.searchParams.set("X-Plex-Token", accessToken);
+		url.searchParams.set("download", "1");
+		
+		return url.href;
 	}
 	
 	// Download a media item, handling parents/grandparents
@@ -1246,13 +1300,18 @@
 	async function domCallback(domElement, clientId, metadataId) {
 		// Make sure server data has loaded in
 		if (!(await serverData.available())) {
-			errorHandle(`Server information loading failed, trying again on next trigger.`);
+			domElement.setAttribute("title", "Failed to load Plex resource information.");
 			return false;
 		}
 		
 		// Make sure we have media data for this item
 		if (!(await serverData.mediaAvailable(clientId, metadataId))) {
-			errorHandle(`Could not load data for metadataId ${metadataId}`);
+			if (serverData.servers[clientId].allowsDl === false) {
+				// Nothing went wrong, this server just forbids downloads
+				domElement.setAttribute("title", "This server is configured to disallow downloads.");
+			} else {
+				domElement.setAttribute("title", "Failed to load media information from this Plex server.");
+			}
 			return false;
 		}
 		
