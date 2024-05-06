@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.3
+// @version      1.5.4
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
