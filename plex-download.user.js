@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.1
+// @version      1.5.2
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -328,7 +328,7 @@
 	modal.itemTemplate.className = `${domPrefix}modal_table_row`;
 	modal.itemTemplate.innerHTML = `
 		<${domPrefix}element class="${domPrefix}modal_table_cell">
-			<input type="checkbox" checked="true" tabindex="0"/>
+			<input type="checkbox" checked tabindex="0"/>
 		</${domPrefix}element>
 		
 		<${domPrefix}element class="${domPrefix}modal_table_cell" style="text-align:left"></${domPrefix}element>
@@ -361,29 +361,29 @@
 	modal.lastTab  = modal.downloadButton;
 	
 	// Allow Tab/Enter/Space to correctly interact with the modal
-	modal.captureKeyPress = function(e) {
+	modal.captureKeyPress = function(event) {
 		// No keypresses are allowed to interact with any lower event listeners
-		e.stopImmediatePropagation();
+		event.stopImmediatePropagation();
 		
-		switch (e.key) {
+		switch (event.key) {
 			case "Tab":
 				// Move focus into the modal if it somehow isn't already
 				if (!modal.container.contains(document.activeElement)) {
-					e.preventDefault();
+					event.preventDefault();
 					modal.firstTab.focus();
 					break;
 				}
 				
 				// Clamp tabbing to the next element to the selectable elements within the modal
 				// Shift key reverses the direction
-				if (e.shiftKey) {
+				if (event.shiftKey) {
 					if (document.activeElement === modal.firstTab) {
-						e.preventDefault();
+						event.preventDefault();
 						modal.lastTab.focus();
 					}
 				} else {
 					if (document.activeElement === modal.lastTab) {
-						e.preventDefault();
+						event.preventDefault();
 						modal.firstTab.focus();
 					}
 				}
@@ -396,7 +396,7 @@
 			
 			case "Enter":
 				// The enter key interacting with checkboxes can be unreliable
-				e.preventDefault();
+				event.preventDefault();
 				if (modal.container.contains(document.activeElement)) {
 					document.activeElement.click();
 				}
@@ -405,9 +405,9 @@
 	}
 	
 	// Modal removes itself from the DOM once its CSS transition is over
-	modal.container.addEventListener("transitionend", function(e) {
+	modal.container.addEventListener("transitionend", function(event) {
 		// Ignore any transitionend events fired by child elements
-		if (e.target !== modal.container) return;
+		if (event.target !== modal.container) return;
 		
 		// Look to remove the modal from the DOM
 		if (!modal.container.classList.contains(`${domPrefix}open`)) {
@@ -455,7 +455,7 @@
 	
 	// Hook functionality for modal
 	modal.overlay.addEventListener("click", modal.close);
-	modal.popup.addEventListener("click", function(e) { e.stopPropagation() });
+	modal.popup.addEventListener("click", function(event) { event.stopPropagation() });
 	modal.topX.addEventListener("click", modal.close);
 	
 	modal.checkAll.addEventListener("change", function() {
@@ -571,7 +571,6 @@
 	
 	
 	
-	
 	// The observer object that waits for page to be right to inject new functionality
 	const DOMObserver = {};
 	
@@ -617,24 +616,6 @@
 	
 	
 	
-	// Fetch XML and return parsed body
-	const xmlParser = new DOMParser();
-	async function fetchXml(url) {
-		const response     = await fetch(url);
-		const responseText = await response.text();
-		const responseXml  = xmlParser.parseFromString(responseText, "text/xml");
-		return responseXml;
-	}
-	
-	// Fetch JSON and return parsed body
-	async function fetchJSON(url) {
-		const response     = await fetch(url, { headers : { accept : "application/json" } });
-		const responseJSON = await response.json();
-		return responseJSON;
-	}
-	
-	
-	
 	// Server identifiers and their respective data (loaded over API request)
 	const serverData = {
 		servers : {
@@ -651,6 +632,7 @@
 		// Promise for loading server data, ensure it is loaded before we try to pull media data
 		promise : null,
 	};
+	serverData.xmlParser = new DOMParser();
 	
 	// Merge new data object into serverData
 	serverData.update = function(newData, serverDataScope) {
@@ -679,9 +661,31 @@
 		const apiResourceUrl = `https://plex.tv/api/resources?includeHttps=1&includeRelay=1&X-Plex-Token=${serverToken}`;
 		let resourceXml;
 		try {
-			resourceXml = await fetchXml(apiResourceUrl);
-		} catch(e) {
-			errorHandle(`Cannot load valid server information (resources API call returned error ${e})`);
+			let response = await fetch(apiResourceUrl);
+			if (!response.ok) {
+				// If Plex responds with non-OK, then there is a non-network related issue
+				// Perhaps Plex is down, serving 500s?
+				errorHandle(`Could not retrieve Plex resources: received HTTP ${response.status}`);
+				return false;
+			}
+			
+			let responseText = await response.text();
+			
+			// Interestingly, parseFromString on failure does NOT throw an exception, rather it just gives you 
+			// an XML document with a <parsererror> node in it. It will spit an error out in the console, but 
+			// this error is not actually catchable.
+			resourceXml = serverData.xmlParser.parseFromString(responseText, "text/xml");
+		} catch (exception) {
+			switch (exception.name) {
+				case "TypeError":
+					errorHandle(`Network error occurred while retrieving Plex resources: ${exception.message}`);
+					break;
+				
+				default:
+					errorHandle(`Unknown error occurred while retrieving Plex resources: ${exception.message}`);
+					break;
+			}
+			
 			return false;
 		}
 		
@@ -916,19 +920,45 @@
 		
 		let responseJSON;
 		try {
-			responseJSON = await fetchJSON(`${baseUri}${apiPath}`);
-		} catch(e) {
-			// Network failure, try the fallback URI for this server
-			if (serverData.servers[clientId].fallbackUri) {
-				serverData.servers[clientId].baseUri = serverData.servers[clientId].fallbackUri;
-				serverData.servers[clientId].fallbackUri = false;
-				
-				// Run again from the top
-				return await serverData.recurseMediaApi(clientId, apiPath, topPromise, previousRecurse);
-			} else {
-				errorHandle(`Could not establish connection to server at ${serverData.servers[clientId].baseUri}: ${e}`);
+			// Headers here are required for Plex API to respond in JSON
+			let response = await fetch(`${baseUri}${apiPath}`, { headers : { accept : "application/json" } });
+			if (!response.ok) {
+				// If the server responds with non-OK, then there is a non-network related issue
+				// Perhaps on a bad page with invalid URL?
+				errorHandle(`Could not retrieve API data at ${baseUri}${apiPath} : received response code ${response.status}`);
 				return false;
 			}
+			
+			// Parse JSON body, may fail with SyntaxError
+			responseJSON = await response.json();
+			
+		} catch (exception) {
+			switch (exception.name) {
+				case "TypeError":
+					// Network failure, try the fallback URI for this server
+					if (serverData.servers[clientId].fallbackUri) {
+						serverData.servers[clientId].baseUri = serverData.servers[clientId].fallbackUri;
+						serverData.servers[clientId].fallbackUri = false;
+						
+						// Run again from the top
+						return await serverData.recurseMediaApi(clientId, apiPath, topPromise, previousRecurse);
+					} else {
+						errorHandle(`Could not establish connection to server at ${baseUri} : ${exception.message}`);
+					}
+					
+					break;
+				
+				case "SyntaxError":
+					// Did not parse JSON, malformed response in some way
+					errorHandle(`Could not parse API JSON at ${baseUri} : ${exception.message}`);
+					break;
+				
+				default:
+					errorHandle(`Could not retrieve API data at ${baseUri} : ${exception.message}`);
+					break;
+			}
+			
+			return false;
 		}
 		
 		const recursionPromises = [];
@@ -1181,7 +1211,7 @@
 	}
 	
 	
-	// Activate DOM element and hook clicking with function. Returns bool indicating success
+	// Activate DOM element and hook clicking with function. Returns an async bool indicating success
 	async function domCallback(domElement, clientId, metadataId) {
 		// Make sure server data has loaded in
 		if (!(await serverData.available())) {
@@ -1196,8 +1226,8 @@
 		}
 		
 		// Hook function to button if everything works
-		const downloadFunction = function(e) {
-			e.stopPropagation();
+		const downloadFunction = function(event) {
+			event.stopPropagation();
 			download.cleanUp();
 			
 			// Open modal box for group media items
