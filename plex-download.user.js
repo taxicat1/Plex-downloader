@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.2
+// @version      1.5.3
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -33,6 +33,37 @@
 	function errorHandle(msg) {
 		errorLog.push(msg);
 		console.log(`${logPrefix} ${msg.toString()}`);
+	}
+	
+	
+	// Redact potentially sensitive information from a URL so it can be safely used for error reports.
+	const ipAddrRegex       = /^\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}$/;
+	const ipAddrReplace     = "1-1-1-1";
+	const hexStartRegex     = /^[0-9a-f]{16}/;
+	const hexStartReplace   = "XXXXXXXXXXXXXXXX";
+	const XPlexTokenReplace = "REDACTED"
+	function redactUrl(unsafeUrl) {
+		let url;
+		try {
+			url = new URL(unsafeUrl);
+		} catch {
+			// A totally malformed URL throws exceptions
+			return "?";
+		}
+		
+		let domains = url.hostname.split(".");
+		for (let i = 0; i < domains.length; i++) {
+			domains[i] = domains[i].replace(ipAddrRegex,   ipAddrReplace);
+			domains[i] = domains[i].replace(hexStartRegex, hexStartReplace);
+		}
+		
+		url.hostname = domains.join(".");
+		
+		if (url.searchParams.has("X-Plex-Token")) {
+			url.searchParams.set("X-Plex-Token", XPlexTokenReplace);
+		}
+		
+		return url.href;
 	}
 	
 	
@@ -689,7 +720,7 @@
 			return false;
 		}
 		
-		const serverInfoXPath  = "//Device[@provides='server']";
+		const serverInfoXPath  = ".//Device[@provides='server']";
 		const servers = resourceXml.evaluate(serverInfoXPath, resourceXml, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
 		// Stupid ugly iterator pattern. Yes this is how you're supposed to do this
 		// https://developer.mozilla.org/en-US/docs/Web/API/XPathResult/iterateNext
@@ -702,7 +733,7 @@
 				continue;
 			}
 			
-			const connectionXPath = "//Connection[@local='0']";
+			const connectionXPath = ".//Connection[@local='0']";
 			const conn = resourceXml.evaluate(connectionXPath, server, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 			if (!conn.singleNodeValue || !conn.singleNodeValue.getAttribute("uri")) {
 				errorHandle(`Cannot find valid server information (no connection data for server ${clientId}).`);
@@ -722,7 +753,7 @@
 			});
 			
 			
-			const relayXPath = "//Connection[@relay='1']";
+			const relayXPath = ".//Connection[@relay='1']";
 			const relay = resourceXml.evaluate(relayXPath, server, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 			if (!relay.singleNodeValue || !relay.singleNodeValue.getAttribute("uri")) {
 				// Can ignore a possible error here as this is only a fallback option
@@ -925,7 +956,7 @@
 			if (!response.ok) {
 				// If the server responds with non-OK, then there is a non-network related issue
 				// Perhaps on a bad page with invalid URL?
-				errorHandle(`Could not retrieve API data at ${baseUri}${apiPath} : received response code ${response.status}`);
+				errorHandle(`Could not retrieve API data at ${redactUrl(baseUri + apiPath)} : received HTTP ${response.status}`);
 				return false;
 			}
 			
@@ -943,18 +974,18 @@
 						// Run again from the top
 						return await serverData.recurseMediaApi(clientId, apiPath, topPromise, previousRecurse);
 					} else {
-						errorHandle(`Could not establish connection to server at ${baseUri} : ${exception.message}`);
+						errorHandle(`Could not establish connection to server at ${redactUrl(baseUri + apiPath)} : ${exception.message}`);
 					}
 					
 					break;
 				
 				case "SyntaxError":
 					// Did not parse JSON, malformed response in some way
-					errorHandle(`Could not parse API JSON at ${baseUri} : ${exception.message}`);
+					errorHandle(`Could not parse API JSON at ${redactUrl(baseUri + apiPath)} : ${exception.message}`);
 					break;
 				
 				default:
-					errorHandle(`Could not retrieve API data at ${baseUri} : ${exception.message}`);
+					errorHandle(`Could not retrieve API data at ${redactUrl(baseUri + apiPath)} : ${exception.message}`);
 					break;
 			}
 			
@@ -1257,6 +1288,8 @@
 		// Try to start immediately
 		handleHashChange();
 		window.addEventListener("hashchange", handleHashChange);
+		
+		DOMObserver.callback();
 	}
 	
 	init();
