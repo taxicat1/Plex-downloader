@@ -2,10 +2,11 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.4
+// @version      1.5.5
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
+// @include      https://*.*.plex.direct:32400/web/index.html#*
 // @run-at       document-start
 // @namespace    https://greasyfork.org/users/1260133
 // ==/UserScript==
@@ -567,8 +568,6 @@
 				
 				item.htmlFor = checkbox.id;
 				
-				item.setAttribute(`${domPrefix}viewed`, mediaData.viewed);
-				
 				// Ignore the first title, which is the modal title instead
 				let itemTitle = titles.slice(1).join(", "); 
 				
@@ -990,6 +989,13 @@
 			viewed     : false,
 		}
 		
+		// Replace forward slashes with backslashes, then use the last backslash
+		// This is to work on both Windows and Unix filepaths
+		let filename = mediaObject.Media[0].Part[0].file;
+		filename = filename.replaceAll("/", "\\");
+		filename = filename.slice(filename.lastIndexOf("\\") + 1);
+		fileInfo.filename = filename;
+		
 		// Use multiple fallbacks in case something goes weird here
 		if (mediaObject.Media[0].hasOwnProperty("container")) {
 			fileInfo.filetype = mediaObject.Media[0].container;
@@ -1090,7 +1096,7 @@
 			}
 		}
 		
-		if (serverData.servers[clientId].allowsDl === false) {
+		if (serverData.servers[clientId].allowsDl === false && serverData.servers[clientId].baseUri !== `${location.protocol}//${location.host}`) {
 			// Downloading disabled by server
 			return false;
 		}
@@ -1181,17 +1187,25 @@
 	let download = {};
 	
 	download.frameClass = `${domPrefix}downloadFrame`;
+	download.trigger = document.createElement("a");
 	
 	// Live collection of frames
 	download.frames = document.getElementsByClassName(download.frameClass);
 	
 	// Initiate a download of a URI using iframes
-	download.fromUri = function(uri) {
+	download.fromUri = function(uri, filename) {
 		let frame = document.createElement("iframe");
 		frame.className = download.frameClass;
+		frame.name = `USERJSINJECTED-${Math.random().toString(36).slice(2)}`;
 		frame.style = "display: none !important;";
 		document.body.appendChild(frame);
-		frame.src = uri;
+		
+		// Must be same origin to use specific file names, otherwise they are just ignored
+		// Must use the <a> tag with the download and target attributes to do this without opening windows or tabs
+		download.trigger.href = uri;
+		download.trigger.target = frame.name;
+		download.trigger.setAttribute("download", filename);
+		download.trigger.click();
 	}
 	
 	// Clean up old DOM elements from previous downloads, if needed
@@ -1218,10 +1232,17 @@
 	
 	// Download a media item, handling parents/grandparents
 	download.fromMedia = function(clientId, metadataId) {
-		
 		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("key")) {
 			const uri = download.makeUri(clientId, metadataId);
-			download.fromUri(uri);
+			const filename = serverData.servers[clientId].mediaData[metadataId].filename;
+			
+			if (serverData.servers[clientId].allowsDl === false && uri.startsWith(`${location.protocol}//${location.host}`)) {
+				let url = new URL(uri);
+				url.searchParams.set("download", "0");
+				download.fromUri(url.href, filename);
+			} else {
+				download.fromUri(uri, filename);
+			}
 		}
 		
 		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("children")) {
