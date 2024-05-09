@@ -440,7 +440,7 @@
 				}
 				break;
 		}
-	}
+	};
 	
 	modal.keyUpDetectEscape = function(event) {
 		if (event.key === "Escape") {
@@ -496,7 +496,7 @@
 		
 		// CSS animation entrance
 		modal.container.classList.add(`${domPrefix}open`);
-	}
+	};
 	
 	// Close modal
 	modal.close = function() {
@@ -507,7 +507,7 @@
 		
 		// CSS animation exit, triggers the removal from the DOM on the transitionend event
 		modal.container.classList.remove(`${domPrefix}open`);
-	}
+	};
 	
 	// Hook functionality for modal
 	modal.overlay.addEventListener("click", modal.close);
@@ -530,7 +530,7 @@
 			}
 		}
 		modal.close();
-	}
+	};
 	
 	modal.downloadButton.addEventListener("click", modal.downloadChecked);
 	
@@ -549,7 +549,7 @@
 		let description = `${selectedItems} file(s) selected. Total size: ${makeFilesize(totalFilesize)}`;
 		modal.downloadDescription.textContent = description;
 		modal.downloadButton.disabled = (totalFilesize === 0); // Can't download nothing
-	}
+	};
 	
 	// Fill the modal with information for a specific group media item
 	modal.populate = function(clientId, metadataId) {
@@ -621,7 +621,7 @@
 		
 		// Refresh the item count/total filesize
 		modal.checkBoxChange();
-	}
+	};
 	
 	
 	
@@ -656,17 +656,17 @@
 		} else {
 			domElement.style.opacity = 0.25;
 		}
-	}
+	};
 	
 	DOMObserver.mo = new MutationObserver(DOMObserver.callback);
 	
 	DOMObserver.observe = function() {
 		DOMObserver.mo.observe(document.body, { childList : true, subtree : true });
-	}
+	};
 	
 	DOMObserver.stop = function() {
 		DOMObserver.mo.disconnect();
-	}
+	};
 	
 	
 	
@@ -738,7 +738,7 @@
 			
 			return false;
 		}
-	}
+	};
 	
 	// Merge new data object into serverData
 	serverData.update = function(newData, serverDataScope) {
@@ -753,7 +753,7 @@
 				serverData.update(newData[key], serverDataScope[key]);
 			}
 		}
-	}
+	};
 	
 	// Make sure a server is online and allows downloads
 	serverData.checkServer = async function(clientId) {
@@ -768,7 +768,7 @@
 		
 		// True here just meaning this request succeeded, nothing about the allowsDl field
 		return true;
-	}
+	};
 	
 	// Load server information for this user account from plex.tv API. Returns an async bool indicating success
 	serverData.load = async function() {
@@ -872,7 +872,7 @@
 		}
 		
 		return true;
-	}
+	};
 	
 	// Keep trying loading server data if it happens to fail
 	serverData.available = async function() {
@@ -885,7 +885,7 @@
 		}
 		
 		return true;
-	}
+	};
 	
 	// Shorthand for updating server data on a media item entry
 	serverData.updateMediaDirectly = function(clientId, metadataId, newData) {
@@ -898,7 +898,7 @@
 				}
 			}
 		});
-	}
+	};
 	
 	// Merge media noda data, excluding any file metadata, into the serverData media cache
 	serverData.updateMediaBase = function(clientId, mediaObject, topPromise, previousRecurse) {
@@ -1000,7 +1000,7 @@
 		if (previousRecurse && previousRecurse.type === "collection") {
 			updateParent(mediaObject.ratingKey, previousRecurse.ratingKey);
 		}
-	}
+	};
 	
 	// Merge media node file metadata from API response into the serverData media cache
 	serverData.updateMediaFileInfo = function(clientId, mediaObject, previousRecurse) {
@@ -1049,7 +1049,7 @@
 		}
 		
 		serverData.updateMediaDirectly(clientId, mediaObject.ratingKey, fileInfo);
-	}
+	};
 	
 	// Recursive function that will follow children/leaves of an API call and store them all into mediaData
 	// Returns an async bool of success
@@ -1095,7 +1095,7 @@
 		}
 		
 		return await Promise.all(recursionPromises);
-	}
+	};
 	
 	// Start pulling an API response for this media item. Returns an async bool indicating success
 	serverData.loadMediaData = async function(clientId, metadataId) {
@@ -1128,7 +1128,7 @@
 		
 		const promise = serverData.servers[clientId].mediaData[metadataId].promise;
 		return await serverData.recurseMediaApi(clientId, `/library/metadata/${metadataId}`, promise);
-	}
+	};
 	
 	// Try to ensure media data is loaded for a given item. Returns an async bool indicating if the item is available
 	serverData.mediaAvailable = async function(clientId, metadataId) {
@@ -1139,7 +1139,7 @@
 			// in handleHashChange to detect if we need to create a new request
 			return false;
 		}
-	}
+	};
 	
 	
 	
@@ -1231,7 +1231,7 @@
 		download.trigger.target = frame.name;
 		download.trigger.setAttribute("download", filename);
 		download.trigger.click();
-	}
+	};
 	
 	// Clean up old DOM elements from previous downloads, if needed
 	download.cleanUp = function() {
@@ -1239,7 +1239,7 @@
 		while (download.frames.length !== 0) {
 			download.frames[0].remove();
 		}
-	}
+	};
 	
 	// Assemble download URI from key and base URI
 	download.makeUri = function(clientId, metadataId) {
@@ -1253,7 +1253,7 @@
 		url.searchParams.set("download", "1");
 		
 		return url.href;
-	}
+	};
 	
 	// Download a media item, handling parents/grandparents
 	download.fromMedia = function(clientId, metadataId) {
@@ -1276,7 +1276,7 @@
 				download.fromMedia(clientId, childId);
 			}
 		}
-	}
+	};
 	
 	
 	
