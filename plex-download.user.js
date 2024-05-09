@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.5
+// @version      1.5.6
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -373,7 +373,7 @@
 	
 	// Must use DocumentFragment here to access getElementById
 	modal.documentFragment = document.createDocumentFragment();
-	modal.documentFragment.append(modal.container);
+	modal.documentFragment.appendChild(modal.container);
 	
 	modal.overlay             = modal.documentFragment.getElementById(`${domPrefix}modal_overlay`);
 	modal.popup               = modal.documentFragment.getElementById(`${domPrefix}modal_popup`);
@@ -423,6 +423,7 @@
 				break;
 			
 			case "Escape":
+				event.preventDefault();
 				modal.close();
 				break;
 			
@@ -750,7 +751,7 @@
 	serverData.load = async function() {
 		// Ensure access token
 		let serverToken  = window.localStorage.getItem("myPlexAccessToken");
-		let browserToken = window.localStorage.getItem("clientID")
+		let browserToken = window.localStorage.getItem("clientID");
 		if (serverToken === null || browserToken === null) {
 			errorHandle(`Cannot find a valid access token (localStorage Plex token missing).`);
 			return false;
@@ -794,6 +795,7 @@
 		
 		for (let i = 0; i < resourceJSON.length; i++) {
 			let server = resourceJSON[i];
+			if (server.provides !== "server") continue;
 			
 			if (!server.hasOwnProperty("clientIdentifier") || !server.hasOwnProperty("accessToken")) {
 				errorHandle(`Cannot find valid server information (missing ID or token in API response).`);
