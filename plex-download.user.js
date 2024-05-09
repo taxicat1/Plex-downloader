@@ -442,6 +442,12 @@
 		}
 	}
 	
+	modal.keyUpDetectEscape = function(event) {
+		if (event.key === "Escape") {
+			modal.close();
+		}
+	};
+	
 	// Set up this listener immediately, and decide whether to fire it or not inside the callback
 	// This is required so no other event listener fires before it, by being attached after it
 	window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
@@ -475,6 +481,16 @@
 		// Listen to page navigation to close the modal
 		window.addEventListener("popstate", modal.close);
 		
+		// BUG: in some circumstances, the Escape key will not fire a keydown keyboard event
+		// I believe this is Plex's fault. If you execute:
+		//     window.dispatchEvent(new KeyboardEvent('keydown', {'key': 'Escape'}));
+		// then the event dispatches normally. However, if you instead do:
+		//     document.body.dispatchEvent(new KeyboardEvent('keydown', {'key': 'Escape'}));
+		// then the event handler for document.body sometimes, somehow, stops the event, even
+		// if an earlier event handler is supposed to get the event first.
+		// The only fix for this I found is to also listen for keyup to detect Escape
+		window.addEventListener("keyup", modal.keyUpDetectEscape);
+		
 		// Focus on the download button, such that "Enter" immediately will start download
 		modal.lastTab.focus();
 		
@@ -486,6 +502,8 @@
 	modal.close = function() {
 		// Stop listening to popstate
 		window.removeEventListener("popstate", modal.close);
+		
+		window.removeEventListener("keyup", modal.keyUpDetectEscape);
 		
 		// CSS animation exit, triggers the removal from the DOM on the transitionend event
 		modal.container.classList.remove(`${domPrefix}open`);
