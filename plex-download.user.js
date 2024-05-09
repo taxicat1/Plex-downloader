@@ -394,6 +394,11 @@
 	
 	// Allow Tab/Enter/Space to correctly interact with the modal
 	modal.captureKeyPress = function(event) {
+		// Do nothing is modal is not open
+		if (!modal.container.classList.contains(`${domPrefix}open`)) {
+			return;
+		}
+		
 		// No keypresses are allowed to interact with any lower event listeners
 		event.stopImmediatePropagation();
 		
@@ -437,6 +442,10 @@
 		}
 	}
 	
+	// Set up this listener immediately, and decide whether to fire it or not inside the callback
+	// This is required so no other event listener fires before it, by being attached after it
+	window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
+	
 	// Modal removes itself from the DOM once its CSS transition is over
 	modal.container.addEventListener("transitionend", function(event) {
 		// Ignore any transitionend events fired by child elements
@@ -463,8 +472,7 @@
 		// Add modal to DOM
 		document.body.appendChild(modal.container);
 		
-		// Set up event listeners
-		window.addEventListener("keydown", modal.captureKeyPress, { capturing : true });
+		// Listen to page navigation to close the modal
 		window.addEventListener("popstate", modal.close);
 		
 		// Focus on the download button, such that "Enter" immediately will start download
@@ -476,10 +484,7 @@
 	
 	// Close modal
 	modal.close = function() {
-		// Stop capturing keypresses
-		window.removeEventListener("keydown", modal.captureKeyPress, { capturing : true });
-		
-		// Stop listening to popstate too
+		// Stop listening to popstate
 		window.removeEventListener("popstate", modal.close);
 		
 		// CSS animation exit, triggers the removal from the DOM on the transitionend event
