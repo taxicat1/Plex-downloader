@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.6
+// @version      1.5.7
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -69,8 +69,8 @@
 	
 	
 	// Turn a number of bytes to a more friendly size display
+	const fsUnits = [ "B", "KB", "MB", "GB", "TB" ];
 	function makeFilesize(numbytes) {
-		const units = [ "B", "KB", "MB", "GB" ];
 		let ui = 0;
 		
 		numbytes = parseInt(numbytes);
@@ -79,15 +79,15 @@
 		}
 		
 		// I don't care what hard drive manufacturers say, there are 1024 bytes in a kilobyte
-		while (numbytes >= 1024 && ui < units.length - 1) {
+		while (numbytes >= 1024 && ui < fsUnits.length - 1) {
 			numbytes /= 1024;
 			ui++;
 		}
 		
 		if (ui !== 0) {
-			return `${numbytes.toFixed(2)} ${units[ui]}`;
+			return `${numbytes.toFixed(2)} ${fsUnits[ui]}`;
 		} else {
-			return `${numbytes} ${units[ui]}`;
+			return `${numbytes} ${fsUnits[ui]}`;
 		}
 	}
 	
@@ -101,7 +101,7 @@
 		
 		let h = Math.floor(ms/3600000);
 		let m = Math.floor((ms%3600000)/60000);
-		let s = Math.floor(((ms%3600000)%60000)/1000);
+		let s = Math.floor((ms%60000)/1000);
 		
 		let ret = [ h, m, s ];
 		
@@ -189,6 +189,7 @@
 			width: 100%;
 			overflow-y: scroll;
 			scrollbar-color: #aaa #333;
+			scrollbar-width: thin;
 			background: #0005;
 			margin-top: 12px;
 			border-radius: 6px;
@@ -455,7 +456,9 @@
 	// Modal removes itself from the DOM once its CSS transition is over
 	modal.container.addEventListener("transitionend", function(event) {
 		// Ignore any transitionend events fired by child elements
-		if (event.target !== modal.container) return;
+		if (event.target !== modal.container) {
+			return;
+		}
 		
 		// Look to remove the modal from the DOM
 		if (!modal.container.classList.contains(`${domPrefix}open`)) {
@@ -632,7 +635,9 @@
 	DOMObserver.callback = async function() {
 		// Detect the presence of the injection point first
 		const injectionPoint = document.querySelector(injectionElement);  
-		if (!injectionPoint) return;
+		if (!injectionPoint) {
+			return;
+		}
 		
 		// We can always stop observing when we have found the injection point
 		// Note: This relies on the fact that the page does not mutate without also
@@ -642,10 +647,14 @@
 		
 		// Should be on the right URL if we're observing the DOM and the injection point is found
 		const urlIds = parseUrl();
-		if (!urlIds) return;
+		if (!urlIds) {
+			return;
+		}
 		
 		// Make sure we don't ever double trigger for any reason
-		if (document.getElementById(`${domPrefix}DownloadButton`)) return;
+		if (document.getElementById(`${domPrefix}DownloadButton`)) {
+			return;
+		}
 		
 		// Inject new button and await the data to add functionality
 		const domElement = modifyDom(injectionPoint);
@@ -954,7 +963,7 @@
 				children : [],
 			});
 			
-			// Could use a Set object potentially instead
+			// Cannot use a Set object here, since the items are ordered
 			if (!serverData.servers[clientId].mediaData[parentId].children.includes(childId)) {
 				serverData.servers[clientId].mediaData[parentId].children.push(childId);
 			}
@@ -978,7 +987,7 @@
 			}
 			
 			updateParent(mediaObject.ratingKey, mediaObject.parentRatingKey, parentData);
-
+			
 			
 			// Handle grandparent, if neccessary
 			if (mediaObject.hasOwnProperty("grandparentRatingKey")) {
@@ -1061,18 +1070,33 @@
 		
 		const recursionPromises = [];
 		
+		/*
+		// Possible better method than detecting /allLeaves vs /children
+		let continueRecursion = true;
+		if (responseJSON.MediaContainer.hasOwnProperty("Directory")) {
+			continueRecursion = false;
+			let nextPath = responseJSON.MediaContainer.Directory[0].key;
+			let recursion = serverData.recurseMediaApi(clientId, nextPath, topPromise, null);
+			recursionPromises.push(recursion);
+		}
+		*/
+		
 		for (let i = 0; i < responseJSON.MediaContainer.Metadata.length; i++) {
 			let mediaObject = responseJSON.MediaContainer.Metadata[i];
 			
 			// Record basic information about this media object before looking deeper into what it is
 			serverData.updateMediaBase(clientId, mediaObject, topPromise, previousRecurse);
 			
+			// If this object has associated media, record its file information
 			if (mediaObject.hasOwnProperty("Media")) {
 				serverData.updateMediaFileInfo(clientId, mediaObject, previousRecurse);
 				continue;
 			}
 			
+			// Otherwise, check if this object has children/leaves that need to be recursed
 			if (mediaObject.hasOwnProperty("leafCount") || mediaObject.hasOwnProperty("childCount")) {
+				let nextPath = `/library/metadata/${mediaObject.ratingKey}/children`;
+				
 				// Very stupid quirk of the Plex API: it will tell you something has leaves, but then calling allLeaves gives nothing.
 				// Only when something has children AND leaves can you use allLeaves
 				// (like a TV show could have 10 children (seasons) and 100 leaves (episodes))
@@ -1081,16 +1105,12 @@
 					mediaObject.hasOwnProperty("leafCount") && 
 					(mediaObject.childCount !== mediaObject.leafCount)
 				) {
-					let leafPath = `/library/metadata/${mediaObject.ratingKey}/allLeaves`;
-					let recursion = serverData.recurseMediaApi(clientId, leafPath, topPromise, mediaObject);
-					recursionPromises.push(recursion);
-					continue;
-				} else {
-					let childPath = `/library/metadata/${mediaObject.ratingKey}/children`;
-					let recursion = serverData.recurseMediaApi(clientId, childPath, topPromise, mediaObject);
-					recursionPromises.push(recursion);
-					continue;
+					nextPath = `/library/metadata/${mediaObject.ratingKey}/allLeaves`;
 				}
+				
+				let recursion = serverData.recurseMediaApi(clientId, nextPath, topPromise, mediaObject);
+				recursionPromises.push(recursion);
+				continue;
 			}
 		}
 		
@@ -1147,7 +1167,9 @@
 	const metadataIdRegex = /^\/library\/(?:metadata|collections)\/(\d+)$/;
 	const clientIdRegex   = /^\/server\/([a-f0-9]{40})\/(?:details|activity)$/;
 	function parseUrl() {
-		if (!location.hash.startsWith("#!/")) return false;
+		if (!location.hash.startsWith("#!/")) {
+			return false;
+		}
 		
 		// Use a URL object to parse the shebang
 		let shebang = location.hash.slice(2);
@@ -1156,7 +1178,9 @@
 		// URL.pathname should be something like:
 		//  /server/fd174cfae71eba992435d781704afe857609471b/details 
 		let clientIdMatch = clientIdRegex.exec(hashUrl.pathname);
-		if (!clientIdMatch || clientIdMatch.length !== 2) return false;
+		if (!clientIdMatch || clientIdMatch.length !== 2) {
+			return false;
+		}
 		
 		// URL.searchParams should be something like:
 		//  ?key=%2Flibrary%2Fmetadata%2F25439&context=home%3Ahub.continueWatching~0~0 
@@ -1164,7 +1188,9 @@
 		//  /library/metadata/25439 
 		let mediaKey = hashUrl.searchParams.get("key");
 		let metadataIdMatch = metadataIdRegex.exec(mediaKey);
-		if (!metadataIdMatch || metadataIdMatch.length !== 2) return false;
+		if (!metadataIdMatch || metadataIdMatch.length !== 2) {
+			return false;
+		}
 		
 		// Get rid of regex match and retain only capturing group
 		let clientId   = clientIdMatch[1];
@@ -1207,6 +1233,8 @@
 		}
 	}
 	
+	window.addEventListener("hashchange", handleHashChange);
+	
 	
 	
 	let download = {};
@@ -1227,9 +1255,9 @@
 		
 		// Must be same origin to use specific file names, otherwise they are just ignored
 		// Must use the <a> tag with the download and target attributes to do this without opening windows or tabs
-		download.trigger.href = uri;
-		download.trigger.target = frame.name;
-		download.trigger.setAttribute("download", filename);
+		download.trigger.href     = uri;
+		download.trigger.target   = frame.name;
+		download.trigger.download = filename;
 		download.trigger.click();
 	};
 	
@@ -1390,10 +1418,10 @@
 		// Begin loading server data immediately
 		serverData.promise = serverData.load();
 		
-		// Try to start immediately
+		// Check the URL we loaded in on
 		handleHashChange();
-		window.addEventListener("hashchange", handleHashChange);
 		
+		// Check the callback immediately too, just in case the script was not loaded before the page did
 		DOMObserver.callback();
 	}
 	
