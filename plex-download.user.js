@@ -2,15 +2,20 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.7
+// @version      1.5.8
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
-// @include      https://*.*.plex.direct:32400/web/index.html#*
+// @include      https://*.*.plex.direct:32400/web/index.html*
 // @run-at       document-start
 // @namespace    https://greasyfork.org/users/1260133
 // ==/UserScript==
 
+
+// Bookmarklet version:
+/*
+javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`;s.src='https://update.greasyfork.org/scripts/487119/Plex%20downloader.user.js';d.head.append(s)}})(document)
+*/
 
 // This code is a heavy modification of the existing PlxDwnld project
 // https://sharedriches.com/plex-scripts/piplongrun/
@@ -25,7 +30,7 @@
 	const injectionElement    = "button[data-testid=preplay-play]"; // Play button
 	const injectPosition      = "after";
 	const domElementStyle     = "";
-	const domElementInnerHTML = "<svg xmlns='http://www.w3.org/2000/svg' style='height: 1.5rem;width: 1.5rem;margin: 0 4px 0 0;'><g><path d='M3,12.3v7a2,2,0,0,0,2,2H19a2,2,0,0,0,2-2v-7' fill='none' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'></path><g><polyline data-name='Right' fill='none' id='Right-2' points='7.9 12.3 12 16.3 16.1 12.3' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'></polyline><line fill='none' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' x1='12' x2='12' y1='2.7' y2='14.2'></line></g></g></svg>Download";
+	const domElementInnerHTML = "<svg style='height:1.5rem; width:1.5rem; margin:0 4px 0 0;'><g><path d='M3,12.3v7a2,2,0,0,0,2,2H19a2,2,0,0,0,2-2v-7' fill='none' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'></path><g><polyline fill='none' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' points='7.9 12.3 12 16.3 16.1 12.3'></polyline><line fill='none' stroke='currentcolor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' x1='12' x2='12' y1='2.7' y2='14.2'></line></g></g></svg>Download";
 	
 	
 	
@@ -42,7 +47,7 @@
 	const ipAddrReplace     = "1-1-1-1";
 	const hexStartRegex     = /^[0-9a-f]{16}/;
 	const hexStartReplace   = "XXXXXXXXXXXXXXXX";
-	const XPlexTokenReplace = "REDACTED"
+	const XPlexTokenReplace = "REDACTED";
 	function redactUrl(unsafeUrl) {
 		let url;
 		try {
@@ -374,7 +379,7 @@
 	
 	// Must use DocumentFragment here to access getElementById
 	modal.documentFragment = document.createDocumentFragment();
-	modal.documentFragment.appendChild(modal.container);
+	modal.documentFragment.append(modal.container);
 	
 	modal.overlay             = modal.documentFragment.getElementById(`${domPrefix}modal_overlay`);
 	modal.popup               = modal.documentFragment.getElementById(`${domPrefix}modal_popup`);
@@ -462,7 +467,7 @@
 		
 		// Look to remove the modal from the DOM
 		if (!modal.container.classList.contains(`${domPrefix}open`)) {
-			modal.documentFragment.appendChild(modal.container);
+			modal.documentFragment.append(modal.container);
 		}
 	});
 	
@@ -479,7 +484,7 @@
 		modal.checkBoxChange();
 		
 		// Add modal to DOM
-		document.body.appendChild(modal.container);
+		document.body.append(modal.container);
 		
 		// Listen to page navigation to close the modal
 		window.addEventListener("popstate", modal.close);
@@ -573,7 +578,7 @@
 		(function recurseMediaChildren(metadataId, titles) {
 			titles.push(serverData.servers[clientId].mediaData[metadataId].title);
 			
-			if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("children")) {
+			if (Object.hasOwn(serverData.servers[clientId].mediaData[metadataId], "children")) {
 				// Must sort the children by index here so they appear in the proper order
 				serverData.servers[clientId].mediaData[metadataId].children.sort((a, b) => {
 					let mediaA = serverData.servers[clientId].mediaData[a];
@@ -608,7 +613,7 @@
 				cells[5].textContent = mediaData.filetype.toUpperCase();
 				cells[6].textContent = makeFilesize(mediaData.filesize);
 				
-				modal.itemContainer.appendChild(item);
+				modal.itemContainer.append(item);
 			}
 			
 			titles.pop();
@@ -754,7 +759,7 @@
 		serverDataScope = serverDataScope || serverData;
 		
 		for (let key in newData) {
-			if (!serverDataScope.hasOwnProperty(key) || typeof newData[key] !== "object") {
+			if (!Object.hasOwn(serverDataScope, key) || typeof newData[key] !== "object") {
 				// Write directly if key doesn't exist or key contains POD
 				serverDataScope[key] = newData[key];
 			} else {
@@ -829,7 +834,7 @@
 			let server = resourceJSON[i];
 			if (server.provides !== "server") continue;
 			
-			if (!server.hasOwnProperty("clientIdentifier") || !server.hasOwnProperty("accessToken")) {
+			if (!Object.hasOwn(server, "clientIdentifier") || !Object.hasOwn(server, "accessToken")) {
 				errorHandle(`Cannot find valid server information (missing ID or token in API response).`);
 				continue;
 			}
@@ -838,7 +843,7 @@
 			const accessToken = server.accessToken;
 			
 			const connection = server.connections.find(connection => (!connection.local && !connection.relay));
-			if (!connection || !connection.hasOwnProperty("uri")) {
+			if (!connection || !Object.hasOwn(connection, "uri")) {
 				errorHandle(`Cannot find valid server information (no connection data for server ${clientId}).`);
 				continue;
 			}
@@ -857,7 +862,7 @@
 			
 			
 			const relay = server.connections.find(connection => (!connection.local && connection.relay));
-			if (relay && relay.hasOwnProperty("uri")) {
+			if (relay && Object.hasOwn(relay, "uri")) {
 				// Can ignore a possible error here as this is only a fallback option
 				const fallbackUri = relay.uri;
 				serverData.update({
@@ -919,7 +924,7 @@
 		
 		// Index is used for sorting correctly when displayed in the modal
 		// Some items are unindexed, and that's fine, they will be displayed in whatever order
-		if (mediaObject.hasOwnProperty("index")) {
+		if (Object.hasOwn(mediaObject, "index")) {
 			mediaObjectData.index = mediaObject.index;
 		}
 		
@@ -970,13 +975,13 @@
 		}
 		
 		// Handle parent, if neccessary
-		if (mediaObject.hasOwnProperty("parentRatingKey")) {
+		if (Object.hasOwn(mediaObject, "parentRatingKey")) {
 			let parentData = {
 				title : mediaObject.parentTitle,
 			};
 			
 			// Copy index for sorting if we have it
-			if (mediaObject.hasOwnProperty("parentIndex")) {
+			if (Object.hasOwn(mediaObject, "parentIndex")) {
 				parentData.index = mediaObject.parentIndex;
 			}
 			
@@ -990,13 +995,13 @@
 			
 			
 			// Handle grandparent, if neccessary
-			if (mediaObject.hasOwnProperty("grandparentRatingKey")) {
+			if (Object.hasOwn(mediaObject, "grandparentRatingKey")) {
 				let grandparentData = {
 					title : mediaObject.grandparentTitle,
 				};
 				
 				// Copy index for sorting if we have it
-				if (mediaObject.hasOwnProperty("grandparentIndex")) {
+				if (Object.hasOwn(mediaObject, "grandparentIndex")) {
 					grandparentData.index = mediaObject.grandparentIndex;
 				}
 				
@@ -1021,6 +1026,7 @@
 			resolution : "?",
 			runtimeMS  : -1,
 			viewed     : false,
+		//	letterboxd : false,
 		}
 		
 		// Replace forward slashes with backslashes, then use the last backslash
@@ -1031,15 +1037,15 @@
 		fileInfo.filename = filename;
 		
 		// Use multiple fallbacks in case something goes weird here
-		if (mediaObject.Media[0].hasOwnProperty("container")) {
+		if (Object.hasOwn(mediaObject.Media[0], "container")) {
 			fileInfo.filetype = mediaObject.Media[0].container;
-		} else if (mediaObject.Media[0].Part[0].hasOwnProperty("container")) {
+		} else if (Object.hasOwn(mediaObject.Media[0].Part[0], "container")) {
 			fileInfo.filetype = mediaObject.Media[0].Part[0].container;
 		} else if (fileInfo.key.lastIndexOf(".") !== -1) {
 			fileInfo.filetype = fileInfo.key.slice(fileInfo.key.lastIndexOf(".") + 1);
 		}
 		
-		if (mediaObject.Media[0].hasOwnProperty("videoResolution")) {
+		if (Object.hasOwn(mediaObject.Media[0], "videoResolution")) {
 			fileInfo.resolution = mediaObject.Media[0].videoResolution.toUpperCase();
 			if ([ "144", "240", "480", "720", "1080" ].includes(fileInfo.resolution)) {
 				// A specific p resolution
@@ -1047,15 +1053,27 @@
 			}
 		}
 		
-		if (mediaObject.Media[0].hasOwnProperty("duration")) {
+		if (Object.hasOwn(mediaObject.Media[0], "duration")) {
 			// Duration is measured in milliseconds
 			fileInfo.runtimeMS = mediaObject.Media[0].duration;
 		}
 		
 		// Checked viewcount for viewed flag
-		if (mediaObject.hasOwnProperty("viewCount") && mediaObject.viewCount !== 0) {
+		if (Object.hasOwn(mediaObject, "viewCount") && mediaObject.viewCount !== 0) {
 			fileInfo.viewed = true;
 		}
+		
+		/*
+		if (Object.hasOwn(mediaObject, "Guid")) {
+			for (let i = 0; i < mediaObject.Guid.length; i++) {
+				let id = mediaObject.Guid[i].id;
+				if (id.startsWith("imdb://") || id.startsWith("tmdb://")) {
+					fileInfo.letterboxd = `https://letterboxd.com/${id.slice(0,4)}/${id.slice(7)}`;
+					break;
+				}
+			}
+		}
+		*/
 		
 		serverData.updateMediaDirectly(clientId, mediaObject.ratingKey, fileInfo);
 	};
@@ -1073,7 +1091,7 @@
 		/*
 		// Possible better method than detecting /allLeaves vs /children
 		let continueRecursion = true;
-		if (responseJSON.MediaContainer.hasOwnProperty("Directory")) {
+		if (Object.hasOwn(responseJSON.MediaContainer, "Directory")) {
 			continueRecursion = false;
 			let nextPath = responseJSON.MediaContainer.Directory[0].key;
 			let recursion = serverData.recurseMediaApi(clientId, nextPath, topPromise, null);
@@ -1088,21 +1106,21 @@
 			serverData.updateMediaBase(clientId, mediaObject, topPromise, previousRecurse);
 			
 			// If this object has associated media, record its file information
-			if (mediaObject.hasOwnProperty("Media")) {
+			if (Object.hasOwn(mediaObject, "Media")) {
 				serverData.updateMediaFileInfo(clientId, mediaObject, previousRecurse);
 				continue;
 			}
 			
 			// Otherwise, check if this object has children/leaves that need to be recursed
-			if (mediaObject.hasOwnProperty("leafCount") || mediaObject.hasOwnProperty("childCount")) {
+			if (Object.hasOwn(mediaObject, "leafCount") || Object.hasOwn(mediaObject, "childCount")) {
 				let nextPath = `/library/metadata/${mediaObject.ratingKey}/children`;
 				
 				// Very stupid quirk of the Plex API: it will tell you something has leaves, but then calling allLeaves gives nothing.
 				// Only when something has children AND leaves can you use allLeaves
 				// (like a TV show could have 10 children (seasons) and 100 leaves (episodes))
 				if (
-					mediaObject.hasOwnProperty("childCount") && 
-					mediaObject.hasOwnProperty("leafCount") && 
+					Object.hasOwn(mediaObject, "childCount") && 
+					Object.hasOwn(mediaObject, "leafCount") && 
 					(mediaObject.childCount !== mediaObject.leafCount)
 				) {
 					nextPath = `/library/metadata/${mediaObject.ratingKey}/allLeaves`;
@@ -1125,8 +1143,8 @@
 		}
 		
 		// Get access token and base URI for this server
-		if (!serverData.servers[clientId].hasOwnProperty("baseUri") ||
-		    !serverData.servers[clientId].hasOwnProperty("accessToken")) {
+		if (!Object.hasOwn(serverData.servers[clientId], "baseUri") ||
+		    !Object.hasOwn(serverData.servers[clientId], "accessToken")) {
 			errorHandle(`No server information for clientId ${clientId} when trying to load media data`);
 			return false;
 		}
@@ -1251,7 +1269,7 @@
 		frame.className = download.frameClass;
 		frame.name = `USERJSINJECTED-${Math.random().toString(36).slice(2)}`;
 		frame.style = "display: none !important;";
-		document.body.appendChild(frame);
+		document.body.append(frame);
 		
 		// Must be same origin to use specific file names, otherwise they are just ignored
 		// Must use the <a> tag with the download and target attributes to do this without opening windows or tabs
@@ -1285,7 +1303,7 @@
 	
 	// Download a media item, handling parents/grandparents
 	download.fromMedia = function(clientId, metadataId) {
-		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("key")) {
+		if (Object.hasOwn(serverData.servers[clientId].mediaData[metadataId], "key")) {
 			const uri = download.makeUri(clientId, metadataId);
 			const filename = serverData.servers[clientId].mediaData[metadataId].filename;
 			
@@ -1298,7 +1316,7 @@
 			}
 		}
 		
-		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("children")) {
+		if (Object.hasOwn(serverData.servers[clientId].mediaData[metadataId], "children")) {
 			for (let i = 0; i < serverData.servers[clientId].mediaData[metadataId].children.length; i++) {
 				let childId = serverData.servers[clientId].mediaData[metadataId].children[i];
 				download.fromMedia(clientId, childId);
@@ -1319,7 +1337,7 @@
 		downloadButton.className = `${domPrefix}element ${injectionPoint.className}`;
 		
 		// Apply custom CSS first
-		downloadButton.style = domElementStyle;
+		downloadButton.style.cssText = domElementStyle;
 		
 		// Match the font used by the text content of the injection point
 		// We traverse the element and select the first text node, then use its parent
@@ -1395,7 +1413,7 @@
 			download.cleanUp();
 			
 			// Open modal box for group media items
-			if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("children")) {
+			if (Object.hasOwn(serverData.servers[clientId].mediaData[metadataId], "children")) {
 				modal.open(clientId, metadataId);
 			} else {
 				// Download immediately for single media items
@@ -1405,7 +1423,7 @@
 		domElement.addEventListener("click", downloadFunction);
 		
 		// Add the filesize on hover, if available
-		if (serverData.servers[clientId].mediaData[metadataId].hasOwnProperty("filesize")) {
+		if (Object.hasOwn(serverData.servers[clientId].mediaData[metadataId], "filesize")) {
 			let filesize = makeFilesize(serverData.servers[clientId].mediaData[metadataId].filesize);
 			domElement.setAttribute("title", filesize);
 		}
