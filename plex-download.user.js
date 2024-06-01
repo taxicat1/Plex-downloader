@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.8
+// @version      1.5.9
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -23,8 +23,12 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 (function() {
 	"use strict";
 	
+	function randToken() {
+		return Math.random().toString(36).slice(2);
+	}
+	
 	const logPrefix = "[USERJS Plex Downloader]";
-	const domPrefix = `USERJSINJECTED-${Math.random().toString(36).slice(2)}_`;
+	const domPrefix = `USERJSINJECTED-${randToken()}_`;
 	
 	// Settings of what element to clone, where to inject it, and any additional CSS to use
 	const injectionElement    = "button[data-testid=preplay-play]"; // Play button
@@ -129,13 +133,17 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 	
 	// The modal is the popup that prompts you for a selection of a group media item like a whole season of a TV show
 	const modal = {};
+	
+	// Must use DocumentFragment to access getElementById
+	modal.documentFragment = document.createDocumentFragment();
 	modal.container = document.createElement(`${domPrefix}element`);
+	modal.documentFragment.append(modal.container);
+	
 	modal.container.id = `${domPrefix}modal_container`;
 	
 	// Styling and element tree as careful as possible to not interfere or be interfered with by Plex
 	modal.stylesheet = `
 		${domPrefix}element {
-			display: block;
 			color: #eee;
 		}
 		
@@ -199,6 +207,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 			margin-top: 12px;
 			border-radius: 6px;
 			box-shadow: 0 0 4px 1px #0003 inset;
+			border-left: 2px solid #222;
 			flex: 1;
 		}
 		
@@ -351,49 +360,48 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 					</${domPrefix}element>
 				</${domPrefix}element>
 				
-				<${domPrefix}element style="display: block; margin: 1em;">
-					<${domPrefix}element id="${domPrefix}modal_downloaddescription"></${domPrefix}element>
-				</${domPrefix}element>
+				<${domPrefix}element style="display:block; margin:1em 0;" id="${domPrefix}modal_downloaddescription"></${domPrefix}element>
 				
 				<${domPrefix}element>
 					<input type="button" id="${domPrefix}modal_downloadbutton" value="Download" tabindex="0"/>
 				</${domPrefix}element>
 			</${domPrefix}element>
 		</${domPrefix}element>
-	`;
-	
-	modal.itemTemplate = document.createElement(`label`);
-	modal.itemTemplate.className = `${domPrefix}modal_table_row`;
-	modal.itemTemplate.innerHTML = `
-		<${domPrefix}element class="${domPrefix}modal_table_cell">
-			<input type="checkbox" checked tabindex="0"/>
-		</${domPrefix}element>
 		
-		<${domPrefix}element class="${domPrefix}modal_table_cell" style="text-align:left"></${domPrefix}element>
-		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
-		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
-		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
-		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
-		<${domPrefix}element class="${domPrefix}modal_table_cell" style="white-space:nowrap"></${domPrefix}element>
+		<template id="${domPrefix}modal_item_template">
+			<label class="${domPrefix}modal_table_row">
+				<${domPrefix}element class="${domPrefix}modal_table_cell">
+					<input type="checkbox" checked class="${domPrefix}modal_item_checkbox" tabindex="0"/>
+				</${domPrefix}element>
+				
+				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_title"      style="text-align:left"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_watched"    style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_runtime"    style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_resolution" style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_filetype"   style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_filesize"   style="white-space:nowrap"></${domPrefix}element>
+			</label>
+		</template>
 	`;
 	
-	// Must use DocumentFragment here to access getElementById
-	modal.documentFragment = document.createDocumentFragment();
-	modal.documentFragment.append(modal.container);
+	modal.getElementByIdSuffix = function(idSuffix) {
+		return modal.documentFragment.getElementById(`${domPrefix}${idSuffix}`);
+	}
 	
-	modal.overlay             = modal.documentFragment.getElementById(`${domPrefix}modal_overlay`);
-	modal.popup               = modal.documentFragment.getElementById(`${domPrefix}modal_popup`);
-	modal.title               = modal.documentFragment.getElementById(`${domPrefix}modal_title`);
-	modal.itemContainer       = modal.documentFragment.getElementById(`${domPrefix}modal_table_rowcontainer`);
-	modal.topX                = modal.documentFragment.getElementById(`${domPrefix}modal_topx`);
-	modal.downloadButton      = modal.documentFragment.getElementById(`${domPrefix}modal_downloadbutton`);
-	modal.checkAll            = modal.documentFragment.getElementById(`${domPrefix}modal_checkall`);
-	modal.clientId            = modal.documentFragment.getElementById(`${domPrefix}modal_clientid`);
-	modal.parentId            = modal.documentFragment.getElementById(`${domPrefix}modal_parentid`);
-	modal.downloadDescription = modal.documentFragment.getElementById(`${domPrefix}modal_downloaddescription`);
+	modal.overlay             = modal.getElementByIdSuffix("modal_overlay");
+	modal.popup               = modal.getElementByIdSuffix("modal_popup");
+	modal.title               = modal.getElementByIdSuffix("modal_title");
+	modal.itemContainer       = modal.getElementByIdSuffix("modal_table_rowcontainer");
+	modal.topX                = modal.getElementByIdSuffix("modal_topx");
+	modal.downloadButton      = modal.getElementByIdSuffix("modal_downloadbutton");
+	modal.checkAll            = modal.getElementByIdSuffix("modal_checkall");
+	modal.clientId            = modal.getElementByIdSuffix("modal_clientid");
+	modal.parentId            = modal.getElementByIdSuffix("modal_parentid");
+	modal.downloadDescription = modal.getElementByIdSuffix("modal_downloaddescription");
+	modal.itemTemplate        = modal.getElementByIdSuffix("modal_item_template");
 	
 	// Live updating collection of items
-	modal.itemCheckboxes = modal.itemContainer.getElementsByTagName("input");
+	modal.itemCheckboxes = modal.itemContainer.getElementsByClassName(`${domPrefix}modal_item_checkbox`);
 	
 	modal.firstTab = modal.topX;
 	modal.lastTab  = modal.downloadButton;
@@ -591,9 +599,14 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 				}
 			} else {
 				let mediaData = serverData.servers[clientId].mediaData[metadataId];
-				let item = modal.itemTemplate.cloneNode(/*deep=*/true);
+				let item = modal.itemTemplate.content.cloneNode(/*deep=*/true).firstElementChild;
 				
-				let checkbox = item.getElementsByTagName("input")[0];
+				function getElementByClassSuffix(node, classSuffix) {
+					return node.getElementsByClassName(`${domPrefix}${classSuffix}`)[0];
+				}
+				
+				// Set up functionality of checkbox and label
+				let checkbox = getElementByClassSuffix(item, "modal_item_checkbox");
 				checkbox.id = `${domPrefix}item_checkbox_${metadataId}`;
 				checkbox.value = metadataId;
 				checkbox.addEventListener("change", modal.checkBoxChange);
@@ -603,15 +616,21 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 				// Ignore the first title, which is the modal title instead
 				let itemTitle = titles.slice(1).join(", "); 
 				
+				// Set hover title
 				item.title = `Download ${itemTitle}`;
 				
-				let cells = item.getElementsByClassName(`${domPrefix}modal_table_cell`);
-				cells[1].textContent = itemTitle;
-				cells[2].textContent = mediaData.viewed ? "\u2713" : "";  // U+2713 is a checkmark symbol
-				cells[3].textContent = makeDuration(mediaData.runtimeMS);
-				cells[4].textContent = mediaData.resolution;
-				cells[5].textContent = mediaData.filetype.toUpperCase();
-				cells[6].textContent = makeFilesize(mediaData.filesize);
+				// Fill fields in table cells
+				getElementByClassSuffix(item, "modal_item_title").textContent = itemTitle;
+				
+				getElementByClassSuffix(item, "modal_item_watched").textContent = mediaData.viewed ? "\u2713" : "";  // U+2713 is a checkmark symbol
+				getElementByClassSuffix(item, "modal_item_watched").title = mediaData.viewed ? "Watched" : "Unwatched"; 
+				
+				getElementByClassSuffix(item, "modal_item_runtime").textContent = makeDuration(mediaData.runtimeMS);
+				
+				getElementByClassSuffix(item, "modal_item_resolution").textContent = mediaData.resolution;
+				
+				getElementByClassSuffix(item, "modal_item_filetype").textContent = mediaData.filetype.toUpperCase();
+				getElementByClassSuffix(item, "modal_item_filesize").textContent = makeFilesize(mediaData.filesize);
 				
 				modal.itemContainer.append(item);
 			}
@@ -1267,7 +1286,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 	download.fromUri = function(uri, filename) {
 		let frame = document.createElement("iframe");
 		frame.className = download.frameClass;
-		frame.name = `USERJSINJECTED-${Math.random().toString(36).slice(2)}`;
+		frame.name = `USERJSINJECTED-${randToken()}`;
 		frame.style = "display: none !important;";
 		document.body.append(frame);
 		
