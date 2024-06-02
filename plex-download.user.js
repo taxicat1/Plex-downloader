@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.9
+// @version      1.5.10
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -144,6 +144,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 	// Styling and element tree as careful as possible to not interfere or be interfered with by Plex
 	modal.stylesheet = `
 		${domPrefix}element {
+			display: block; /* Important to explicitly declare! */
 			color: #eee;
 		}
 		
@@ -180,9 +181,10 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 			max-height: min(80%, 650px);
 			display: flex;
 			flex-direction: column;
+			gap: 1em;
+			padding: 1em 1.3em;
 			border-radius: 14px;
 			background: #3f3f42;
-			padding: 20px;
 			text-align: center;
 			box-shadow: 0 0 10px 1px black;
 			position: relative;
@@ -204,7 +206,6 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 			scrollbar-color: #aaa #333;
 			scrollbar-width: thin;
 			background: #0005;
-			margin-top: 12px;
 			border-radius: 6px;
 			box-shadow: 0 0 4px 1px #0003 inset;
 			border-left: 2px solid #222;
@@ -242,9 +243,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 		}
 		
 		#${domPrefix}modal_downloadbutton {
-			display: inline-flex;
-			justify-content: center;
-			align-items: center;
+			display: inline;
 			background: #0008;
 			padding: 0.2em 0.5em;
 			border-radius: 4px;
@@ -360,7 +359,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 					</${domPrefix}element>
 				</${domPrefix}element>
 				
-				<${domPrefix}element style="display:block; margin:1em 0;" id="${domPrefix}modal_downloaddescription"></${domPrefix}element>
+				<${domPrefix}element id="${domPrefix}modal_downloaddescription"></${domPrefix}element>
 				
 				<${domPrefix}element>
 					<input type="button" id="${domPrefix}modal_downloadbutton" value="Download" tabindex="0"/>
