@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.10
+// @version      1.5.11
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -28,7 +28,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 	}
 	
 	const logPrefix = "[USERJS Plex Downloader]";
-	const domPrefix = `USERJSINJECTED-${randToken()}_`;
+	const domPrefix = `USERJSINJECTED-${randToken()}_`.toLowerCase();
 	
 	// Settings of what element to clone, where to inject it, and any additional CSS to use
 	const injectionElement    = "button[data-testid=preplay-play]"; // Play button
@@ -203,7 +203,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 		#${domPrefix}modal_scrollbox {
 			width: 100%;
 			overflow-y: scroll;
-			scrollbar-color: #aaa #333;
+			scrollbar-color: #fff8 #fff1;
 			scrollbar-width: thin;
 			background: #0005;
 			border-radius: 6px;
@@ -224,9 +224,6 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 			height: 1.5em;
 			width: 1.5em;
 			border-radius: 3px;
-			display: flex;
-			align-items: center;
-			justify-content: center;
 			font-size: 14pt;
 			color: #fff8;
 			background: transparent;
@@ -253,17 +250,13 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 			font-size: 14pt;
 		}
 		
-		#${domPrefix}modal_downloadbutton:hover:not([disabled]) {
-			background: #0007;
+		#${domPrefix}modal_downloadbutton:not([disabled]):hover {
+			background: #14161a78;
 		}
 		
 		#${domPrefix}modal_downloadbutton[disabled] {
 			opacity: 0.5;
 			cursor: default;
-		}
-		
-		#${domPrefix}modal_container .${domPrefix}modal_table_row {
-			display: table-row;
 		}
 		
 		#${domPrefix}modal_container .${domPrefix}modal_table_header {
@@ -368,24 +361,24 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 		</${domPrefix}element>
 		
 		<template id="${domPrefix}modal_item_template">
-			<label class="${domPrefix}modal_table_row">
+			<label style="display:table-row" data-${domPrefix}template-id="modal_item_label">
 				<${domPrefix}element class="${domPrefix}modal_table_cell">
-					<input type="checkbox" checked class="${domPrefix}modal_item_checkbox" tabindex="0"/>
+					<input type="checkbox" checked data-${domPrefix}template-id="modal_item_checkbox" class="${domPrefix}modal_item_checkbox" tabindex="0"/>
 				</${domPrefix}element>
 				
-				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_title"      style="text-align:left"></${domPrefix}element>
-				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_watched"    style="white-space:nowrap"></${domPrefix}element>
-				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_runtime"    style="white-space:nowrap"></${domPrefix}element>
-				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_resolution" style="white-space:nowrap"></${domPrefix}element>
-				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_filetype"   style="white-space:nowrap"></${domPrefix}element>
-				<${domPrefix}element class="${domPrefix}modal_table_cell ${domPrefix}modal_item_filesize"   style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell" data-${domPrefix}template-id="modal_item_title"      style="text-align:left"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell" data-${domPrefix}template-id="modal_item_watched"    style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell" data-${domPrefix}template-id="modal_item_runtime"    style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell" data-${domPrefix}template-id="modal_item_resolution" style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell" data-${domPrefix}template-id="modal_item_filetype"   style="white-space:nowrap"></${domPrefix}element>
+				<${domPrefix}element class="${domPrefix}modal_table_cell" data-${domPrefix}template-id="modal_item_filesize"   style="white-space:nowrap"></${domPrefix}element>
 			</label>
 		</template>
 	`;
 	
 	modal.getElementByIdSuffix = function(idSuffix) {
 		return modal.documentFragment.getElementById(`${domPrefix}${idSuffix}`);
-	}
+	};
 	
 	modal.overlay             = modal.getElementByIdSuffix("modal_overlay");
 	modal.popup               = modal.getElementByIdSuffix("modal_popup");
@@ -566,6 +559,22 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 		modal.downloadButton.disabled = (totalFilesize === 0); // Can't download nothing
 	};
 	
+	// Clone the item template and gather references to its important child nodes
+	modal.getItemTemplateClone = function() {
+		let clone = modal.itemTemplate.content.cloneNode(/*deep=*/true);
+		let idMap = {};
+		
+		for (let node of clone.querySelectorAll(`[data-${domPrefix}template-id]`)) {
+			let id = node.getAttribute(`data-${domPrefix}template-id`);
+			idMap[id] = node;
+		}
+		
+		return {
+			documentFragment : clone,
+			elementId        : idMap
+		};
+	};
+	
 	// Fill the modal with information for a specific group media item
 	modal.populate = function(clientId, metadataId) {
 		if (
@@ -598,40 +607,36 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 				}
 			} else {
 				let mediaData = serverData.servers[clientId].mediaData[metadataId];
-				let item = modal.itemTemplate.content.cloneNode(/*deep=*/true).firstElementChild;
-				
-				function getElementByClassSuffix(node, classSuffix) {
-					return node.getElementsByClassName(`${domPrefix}${classSuffix}`)[0];
-				}
+				let item = modal.getItemTemplateClone();
 				
 				// Set up functionality of checkbox and label
-				let checkbox = getElementByClassSuffix(item, "modal_item_checkbox");
+				let checkbox = item.elementId["modal_item_checkbox"];
 				checkbox.id = `${domPrefix}item_checkbox_${metadataId}`;
 				checkbox.value = metadataId;
 				checkbox.addEventListener("change", modal.checkBoxChange);
 				
-				item.htmlFor = checkbox.id;
+				item.elementId["modal_item_label"].htmlFor = checkbox.id;
 				
 				// Ignore the first title, which is the modal title instead
 				let itemTitle = titles.slice(1).join(", "); 
 				
 				// Set hover title
-				item.title = `Download ${itemTitle}`;
+				item.elementId["modal_item_label"].title = `Download ${itemTitle}`;
 				
 				// Fill fields in table cells
-				getElementByClassSuffix(item, "modal_item_title").textContent = itemTitle;
+				item.elementId["modal_item_title"].textContent = itemTitle;
 				
-				getElementByClassSuffix(item, "modal_item_watched").textContent = mediaData.viewed ? "\u2713" : "";  // U+2713 is a checkmark symbol
-				getElementByClassSuffix(item, "modal_item_watched").title = mediaData.viewed ? "Watched" : "Unwatched"; 
+				item.elementId["modal_item_watched"].textContent = mediaData.viewed ? "\u2713" : "";  // U+2713 is a checkmark symbol
+				item.elementId["modal_item_watched"].title = mediaData.viewed ? "Watched" : "Unwatched"; 
 				
-				getElementByClassSuffix(item, "modal_item_runtime").textContent = makeDuration(mediaData.runtimeMS);
+				item.elementId["modal_item_runtime"].textContent = makeDuration(mediaData.runtimeMS);
 				
-				getElementByClassSuffix(item, "modal_item_resolution").textContent = mediaData.resolution;
+				item.elementId["modal_item_resolution"].textContent = mediaData.resolution;
 				
-				getElementByClassSuffix(item, "modal_item_filetype").textContent = mediaData.filetype.toUpperCase();
-				getElementByClassSuffix(item, "modal_item_filesize").textContent = makeFilesize(mediaData.filesize);
+				item.elementId["modal_item_filetype"].textContent = mediaData.filetype.toUpperCase();
+				item.elementId["modal_item_filesize"].textContent = makeFilesize(mediaData.filesize);
 				
-				modal.itemContainer.append(item);
+				modal.itemContainer.append(item.documentFragment);
 			}
 			
 			titles.pop();
