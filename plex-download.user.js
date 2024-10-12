@@ -2,7 +2,7 @@
 // @name         Plex downloader
 // @description  Adds a download button to the Plex desktop interface. Works on episodes, movies, whole seasons, and entire shows.
 // @author       Mow
-// @version      1.5.11
+// @version      1.5.12
 // @license      MIT
 // @grant        none
 // @match        https://app.plex.tv/desktop/
@@ -1109,6 +1109,11 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 			return false;
 		}
 		
+		// Catch empty media items (can happen!)
+		if (!Object.hasOwn(responseJSON.MediaContainer, "Metadata")) {
+			return true;
+		}
+		
 		const recursionPromises = [];
 		
 		/*
@@ -1415,7 +1420,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 	async function domCallback(domElement, clientId, metadataId) {
 		// Make sure server data has loaded in
 		if (!(await serverData.available())) {
-			domElement.setAttribute("title", "Failed to load Plex resource information.");
+			domElement.title = "Failed to load Plex resource information.";
 			return false;
 		}
 		
@@ -1423,9 +1428,9 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 		if (!(await serverData.mediaAvailable(clientId, metadataId))) {
 			if (serverData.servers[clientId].allowsDl === false) {
 				// Nothing went wrong, this server just forbids downloads
-				domElement.setAttribute("title", "This server is configured to disallow downloads.");
+				domElement.title = "This server is configured to disallow downloads.";
 			} else {
-				domElement.setAttribute("title", "Failed to load media information from this Plex server.");
+				domElement.title = "Failed to load media information from this Plex server.";
 			}
 			return false;
 		}
@@ -1448,7 +1453,7 @@ javascript:(d=>{if(!window._PLDLR){let s;window._PLDLR=s=d.createElement`script`
 		// Add the filesize on hover, if available
 		if (Object.hasOwn(serverData.servers[clientId].mediaData[metadataId], "filesize")) {
 			let filesize = makeFilesize(serverData.servers[clientId].mediaData[metadataId].filesize);
-			domElement.setAttribute("title", filesize);
+			domElement.title = filesize;
 		}
 		
 		return true;
